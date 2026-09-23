@@ -1686,10 +1686,15 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
                 <p id="teacherSpecialtyLoginText" style="margin:0;color:#667;line-height:1.7;font-size:13px;"></p>
             </div>
             <div class="form-group">
-                <label>اختر الاختصاص / الدرس الذي دخلت للعمل به</label>
+                <label>اختر الصف الذي ستدخل للعمل به</label>
+                <select id="teacherLoginClassSelect" onchange="updateTeacherLoginSubjectOptions()"></select>
+            </div>
+            <div class="form-group">
+                <label>اختر المادة / الدرس</label>
                 <select id="teacherLoginSpecialtySelect"></select>
             </div>
-            <button onclick="confirmTeacherSpecialtyLogin()" style="width:100%;background:var(--success);font-weight:800;padding:10px;">دخول بالاختصاص المحدد</button>
+            <div id="teacherLoginSelectionHint" style="font-size:12px;color:#667;line-height:1.7;margin:8px 0;text-align:center;"></div>
+            <button onclick="confirmTeacherSpecialtyLogin()" style="width:100%;background:var(--success);font-weight:800;padding:10px;">دخول بالصف والمادة المحددين</button>
         </div>
     </div>
 
@@ -3390,7 +3395,7 @@ function acknowledgeAnnouncement(id) {
             }
             const revision = String(cloud.updatedAt || '');
 
-            // إذا كان لدينا تعديل محلي لم يُؤكَّد بعد، تجاهل أي نسخة من Firebase
+            // إذا كان لدينا تعديل محلي لم يُؤكَّد بعد، تجاهل أي نسخة من Firebase
             // لا تحمل نفس revision. هذا مهم جداً للحذف: يمنع النسخة القديمة من
             // إعادة العنصر المحذوف إلى الشاشة/localStorage.
             if (cloudSavePending) {
@@ -3512,31 +3517,79 @@ function acknowledgeAnnouncement(id) {
     }
 
     let pendingTeacherLogin = null;
-    function beginTeacherSpecialtyLogin(teacherObj, enteredCode) {
-        const specs=getTeacherSpecialties(teacherObj);
-        if(specs.length<=1){
-            completeTeacherLogin(teacherObj, enteredCode, specs[0]||'عام');
-            return;
+
+    // الصلاحيات الجديدة: ربط كل صف بالمواد التي سمح بها المدير لهذا المعلم.
+    // البيانات القديمة التي تحتوي صفوفاً ودروساً فقط تبقى مدعومة تلقائياً.
+    function getTeacherClassSubjectPermissions(t){
+        const out={};
+        if(!t) return out;
+        const raw=t.classSubjectPermissions;
+        if(raw && typeof raw==='object' && !Array.isArray(raw)){
+            Object.keys(raw).forEach(classId=>{
+                const arr=Array.isArray(raw[classId])?raw[classId]:[];
+                out[String(classId)]=[...new Set(arr.map(x=>String(x).trim()).filter(Boolean))];
+            });
         }
+        return out;
+    }
+    function getTeacherSubjectsForClass(t,classId){
+        const all=getTeacherSpecialties(t);
+        const map=getTeacherClassSubjectPermissions(t);
+        const key=String(classId||'');
+        if(Object.prototype.hasOwnProperty.call(map,key)) return map[key].filter(x=>all.includes(x));
+        return all;
+    }
+    function getTeacherAllowedPairs(t){
+        const ids=getTeacherAssignedClassIdsForRecord(t);
+        const map=getTeacherClassSubjectPermissions(t);
+        const pairs=[];
+        ids.forEach(classId=>{
+            const subjects=Object.prototype.hasOwnProperty.call(map,String(classId)) ? map[String(classId)] : getTeacherSpecialties(t);
+            subjects.forEach(subject=>{ if(subject) pairs.push({classId:String(classId),subject:String(subject)}); });
+        });
+        return pairs;
+    }
+    function beginTeacherSpecialtyLogin(teacherObj, enteredCode) {
+        const classIndices=getTeacherAssignedClassIndicesForRecord(teacherObj);
+        const pairs=getTeacherAllowedPairs(teacherObj);
+        if(!classIndices.length){ alert('المدير لم يحدد أي صف لهذا المعلم.'); return; }
+        if(!pairs.length){ alert('المدير لم يحدد أي مادة لهذا المعلم.'); return; }
         pendingTeacherLogin={teacherObj,enteredCode};
-        const sel=document.getElementById('teacherLoginSpecialtySelect');
+        const classSel=document.getElementById('teacherLoginClassSelect');
+        const subjectSel=document.getElementById('teacherLoginSpecialtySelect');
         const text=document.getElementById('teacherSpecialtyLoginText');
-        if(text) text.textContent=`أهلاً ${teacherObj.name||'معلم'}، المدير حدد لك أكثر من درس. اختر الدرس الذي تريد الدخول للعمل به.`;
-        if(sel) sel.innerHTML=specs.map(x=>`<option value="${escapeGlobalSearchHTML(x)}">${escapeGlobalSearchHTML(x)}</option>`).join('');
+        if(text) text.textContent=`أهلاً ${teacherObj.name||'معلم'}، اختر الصف ثم المادة التي ستعمل بها الآن. سيتم استخدام هذا الاختيار لتحديد طلاب الصف والواجبات والدرجات.`;
+        if(classSel) classSel.innerHTML=classIndices.map(i=>{const c=schoolData[i];return `<option value="${escapeGlobalSearchHTML(c.id)}">${escapeGlobalSearchHTML(c.name||('صف '+(i+1)))}</option>`}).join('');
+        updateTeacherLoginSubjectOptions();
         const modal=document.getElementById('teacherSpecialtyLoginModal');
         if(modal) modal.style.display='flex';
     }
+    function updateTeacherLoginSubjectOptions(){
+        if(!pendingTeacherLogin)return;
+        const t=pendingTeacherLogin.teacherObj;
+        const classId=String(document.getElementById('teacherLoginClassSelect')?.value||'');
+        const subjects=getTeacherSubjectsForClass(t,classId);
+        const sel=document.getElementById('teacherLoginSpecialtySelect');
+        if(sel) sel.innerHTML=subjects.map(x=>`<option value="${escapeGlobalSearchHTML(x)}">${escapeGlobalSearchHTML(x)}</option>`).join('') || '<option value="">لا توجد مادة لهذا الصف</option>';
+        const hint=document.getElementById('teacherLoginSelectionHint');
+        if(hint) hint.textContent=subjects.length?`المواد المسموحة لهذا الصف: ${subjects.join('، ')}`:'لا توجد مادة مسموحة لهذا الصف.';
+    }
     function confirmTeacherSpecialtyLogin(){
         if(!pendingTeacherLogin)return;
+        const classId=String(document.getElementById('teacherLoginClassSelect')?.value||'').trim();
         const spec=String(document.getElementById('teacherLoginSpecialtySelect')?.value||'').trim();
-        if(!spec){alert('اختر الاختصاص أولاً.');return;}
+        if(!classId){alert('اختر الصف أولاً.');return;}
+        if(!spec){alert('اختر المادة أولاً.');return;}
+        const t=pendingTeacherLogin.teacherObj;
+        if(!getTeacherAssignedClassIdsForRecord(t).map(String).includes(classId) || !getTeacherSubjectsForClass(t,classId).includes(spec)){alert('هذا الصف أو هذه المادة غير مسموح بها لهذا المعلم.');return;}
         const p=pendingTeacherLogin; pendingTeacherLogin=null;
         const modal=document.getElementById('teacherSpecialtyLoginModal'); if(modal) modal.style.display='none';
-        completeTeacherLogin(p.teacherObj,p.enteredCode,spec);
+        completeTeacherLogin(p.teacherObj,p.enteredCode,spec,classId);
     }
-    function completeTeacherLogin(teacherObj, enteredCode, spec){
+    function completeTeacherLogin(teacherObj, enteredCode, spec, classId){
         const assignedClassIndices=getTeacherAssignedClassIndicesForRecord(teacherObj);
-        currentUser={role:'teacher',name:teacherObj.name,teacherId:teacherObj.id||'',assignedClassIds:assignedClassIndices.map(i=>schoolData[i]?.id).filter(Boolean),assignedClassIndices,teacherSubject:String(spec||'عام').trim()};
+        const selectedClassIndex=schoolData.findIndex(c=>String(c?.id||'')===String(classId||''));
+        currentUser={role:'teacher',name:teacherObj.name,teacherId:teacherObj.id||'',assignedClassIds:assignedClassIndices.map(i=>schoolData[i]?.id).filter(Boolean),assignedClassIndices,teacherSubject:String(spec||'عام').trim(),selectedClassId:String(classId||''),selectedClassIndex,selectedTeacherClassSubject:{classId:String(classId||''),subject:String(spec||'').trim()}};
         applyUserPermissions();
         document.getElementById('loginOverlay').style.display='none';
         setTimeout(function(){ showLiveAnnouncements(); showComplaintResponses(); },250);
@@ -4032,7 +4085,7 @@ function acknowledgeAnnouncement(id) {
                 const parentClassContent = document.getElementById('classContent');
                 if (parentClassContent) parentClassContent.style.display = 'none';
             } else if (currentUser.role === 'teacher') {
-                const teacherClassIndex = getCurrentTeacherAssignedClassIndex();
+                const teacherClassIndex = Number.isInteger(currentUser.selectedClassIndex) ? currentUser.selectedClassIndex : getCurrentTeacherAssignedClassIndex();
                 if (teacherClassIndex >= 0) selectClass(teacherClassIndex);
                 else document.getElementById('classContent').style.display = 'none';
             } else if (currentUser.role === 'admin') {
@@ -4909,21 +4962,27 @@ function acknowledgeAnnouncement(id) {
     function openTeacherPermissionsEditor(index){
         if(!isPrimaryAdminUser())return;
         const t=teachersData[index]; if(!t)return; editingTeacherPermissionsIndex=index;
-        document.getElementById('teacherPermissionsLabel').innerText=`المعلم: ${t.name}`;
-        const ids=new Set(getTeacherAssignedClassIdsForRecord(t).map(String));
-        document.getElementById('teacherPermissionClasses').innerHTML=schoolData.map(cls=>`<label style="display:flex;gap:6px;align-items:center;padding:7px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:7px;"><input type="checkbox" class="teacher-perm-class" value="${escapeGlobalSearchHTML(cls.id)}" ${ids.has(String(cls.id))?'checked':''}>${escapeGlobalSearchHTML(cls.name||'صف')}</label>`).join('');
-        const specs=new Set(getTeacherSpecialties(t));
-        document.getElementById('teacherPermissionLessons').innerHTML=getSystemLessonNames().map(n=>`<label style="display:flex;gap:6px;align-items:center;padding:7px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:7px;"><input type="checkbox" class="teacher-perm-lesson" value="${escapeGlobalSearchHTML(n)}" ${specs.has(n)?'checked':''}>${escapeGlobalSearchHTML(n)}</label>`).join('');
+        document.getElementById('teacherPermissionsLabel').innerText=`المعلم: ${t.name} — حدد لكل صف المواد المسموحة له`;
+        const currentMap=getTeacherClassSubjectPermissions(t);
+        const allLessons=getSystemLessonNames();
+        document.getElementById('teacherPermissionClasses').innerHTML=schoolData.map(cls=>{
+            const classId=String(cls.id);
+            const selected=new Set(Object.prototype.hasOwnProperty.call(currentMap,classId)?currentMap[classId]:getTeacherSpecialties(t));
+            return `<div style="padding:10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:8px;grid-column:1/-1;"><div style="font-weight:900;margin-bottom:7px;">🏫 ${escapeGlobalSearchHTML(cls.name||'صف')}</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;">${allLessons.map(n=>`<label style="display:flex;gap:6px;align-items:center;padding:6px;background:#fff;border:1px solid #e5e7eb;border-radius:7px;"><input type="checkbox" class="teacher-perm-pair" data-class-id="${escapeGlobalSearchHTML(classId)}" data-subject="${escapeGlobalSearchHTML(n)}" ${selected.has(n)?'checked':''}>${escapeGlobalSearchHTML(n)}</label>`).join('')}</div></div>`;
+        }).join('');
+        document.getElementById('teacherPermissionLessons').innerHTML='<div style="font-size:12px;color:#667;line-height:1.7">تم تحويل الصلاحيات إلى ربط مباشر: الصف ← المواد. مثال: الصف الأول ← علوم، والصف الثاني ← رياضيات. هذا يمنع ظهور طلاب صف آخر عند إعطاء الواجب.</div>';
         document.getElementById('teacherPermissionsModal').style.display='flex';
     }
     function saveTeacherPermissions(){
         if(!isPrimaryAdminUser()||editingTeacherPermissionsIndex===null)return;
         const t=teachersData[editingTeacherPermissionsIndex]; if(!t)return;
-        const ids=[...document.querySelectorAll('.teacher-perm-class:checked')].map(x=>x.value);
-        const lessons=[...document.querySelectorAll('.teacher-perm-lesson:checked')].map(x=>x.value);
-        if(!ids.length){alert('حدد صفاً واحداً على الأقل.');return;} if(!lessons.length){alert('حدد درساً واحداً على الأقل.');return;}
-        t.assignedClassIds=[...new Set(ids)]; t.assignedClassId=t.assignedClassIds[0]; t.assignedClassIndex=getTeacherAssignedClassIndexForRecord(t); t.assignedClassName=getTeacherAssignedClassIndicesForRecord(t).map(i=>schoolData[i].name).join('، '); setTeacherSpecialties(t,lessons);
-        saveData(); renderTeachersTable(); closeModal('teacherPermissionsModal'); alert('تم حفظ صفوف ودروس المعلم بنجاح.');
+        if(!requireAdminSensitiveAction(`تعديل صفوف ومواد المعلم ${t.name}`)) return;
+        const map={}; const ids=[];
+        document.querySelectorAll('.teacher-perm-pair:checked').forEach(x=>{const cid=String(x.dataset.classId||'');const sub=String(x.dataset.subject||'');if(!cid||!sub)return;if(!map[cid])map[cid]=[];map[cid].push(sub);if(!ids.includes(cid))ids.push(cid);});
+        if(!ids.length){alert('حدد صفاً واحداً على الأقل مع مادة واحدة على الأقل.');return;}
+        const lessons=[...new Set(Object.values(map).flat())];
+        t.assignedClassIds=[...new Set(ids)]; t.assignedClassId=t.assignedClassIds[0]; t.assignedClassIndex=getTeacherAssignedClassIndexForRecord(t); t.assignedClassName=getTeacherAssignedClassIndicesForRecord(t).map(i=>schoolData[i].name).join('، '); setTeacherSpecialties(t,lessons); t.classSubjectPermissions=map;
+        saveData(); renderTeachersTable(); closeModal('teacherPermissionsModal'); alert('تم حفظ ربط الصفوف بالمواد للمعلم بنجاح. عند الدخول سيختار الصف ثم المادة.');
     }
 
     function openEditTeacherPasswordModal(index) {
@@ -7708,17 +7767,21 @@ function acknowledgeAnnouncement(id) {
     }
     function getTeacherHomeworkStudents(){
         const t=getCurrentTeacher(); if(!t) return [];
+        const selectedClassId=String(currentUser?.selectedClassId||'');
+        const selectedSubject=String(currentUser?.teacherSubject||'').trim();
         const allowedIds=new Set((currentUser.assignedClassIds||[]).map(String));
         const out=[];
         schoolData.forEach((c,ci)=>{
-            if(allowedIds.size && !allowedIds.has(String(c.id)) && !(currentUser.assignedClassIndices||[]).includes(ci)) return;
+            if(selectedClassId ? String(c.id)!==selectedClassId : (allowedIds.size && !allowedIds.has(String(c.id)))) return;
+            if(selectedClassId && !getTeacherSubjectsForClass(t,selectedClassId).includes(selectedSubject)) return;
             (c.desks||[]).forEach((d,di)=>[1,2].forEach(slot=>{
                 const name=String(d?.['student'+slot]||'').trim(); if(!name) return;
-                out.push({name,code:String(d?.['code'+slot]||''),classIndex:ci,className:c.name||'',deskIndex:di,slot,studentId:String(d?.['student'+slot+'Id']||d?.id||`${ci}_${di}_${slot}`)});
+                out.push({name,code:String(d?.['code'+slot]||''),classIndex:ci,className:c.name||'',classId:String(c.id||''),deskIndex:di,slot,studentId:String(d?.['student'+slot+'Id']||d?.id||`${ci}_${di}_${slot}`)});
             }));
         });
         return out;
     }
+
     function openHomeworkModal(){
         if(!currentUser || currentUser.role!=='teacher'){ alert('خاصية الواجبات متاحة للمعلم فقط.'); return; }
         const old=document.getElementById('homeworkModal'); if(old) old.remove();
@@ -7731,7 +7794,7 @@ function acknowledgeAnnouncement(id) {
         modal.innerHTML=`<div class="modal-content" style="width:min(1050px,98vw);max-height:95vh;overflow:auto;padding:18px"><div class="pro-toolbar" style="justify-content:space-between"><h2 style="margin:0;color:#d35400">📚 واجبات الطلاب</h2><button type="button" onclick="document.getElementById('homeworkModal')?.remove()">✕</button></div>
           <div class="pro-panel"><h3>➕ إضافة واجب جديد</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
           <div><label>عنوان الواجب</label><input id="homeworkTitleInput" placeholder="مثال: حل أسئلة الدرس الثالث"></div>
-          <div><label>المادة</label><input id="homeworkSubjectInput" value="${escapeGlobalSearchHTML(getCurrentTeacherSpec()||'عام')}" placeholder="المادة"></div>
+          <div><label>المادة</label><input id="homeworkSubjectInput" value="${escapeGlobalSearchHTML(currentUser?.teacherSubject||getCurrentTeacherSpec()||'عام')}" placeholder="المادة" readonly></div>
           <div><label>تاريخ إعطاء الواجب</label><input id="homeworkDateInput" type="date" value="${getFormattedDate()}"></div>
           <div><label>نوع الإرسال</label><select id="homeworkAudienceInput" onchange="toggleHomeworkStudentTarget()"><option value="all">إلى جميع أولياء الأمور</option><option value="student">لطالب محدد</option></select></div>
           <div id="homeworkStudentWrap" style="display:none;grid-column:1/-1"><label>اختر الطالب</label><select id="homeworkStudentInput"><option value="">اختر الطالب</option>${students.map((x,i)=>`<option value="${i}">${escapeGlobalSearchHTML(x.name)} — ${escapeGlobalSearchHTML(x.className)}</option>`).join('')}</select></div>
@@ -7754,7 +7817,10 @@ function acknowledgeAnnouncement(id) {
             if(!st){alert('اختر الطالب المطلوب.');return;}
             target={targetCode:st.code,targetStudentId:st.studentId,studentName:st.name,classIndex:st.classIndex,className:st.className};
         }
-        homeworkData.push({id:createStableId('homework'),title,description,subject,date,audience,...target,teacherId:t?.id||currentUser.teacherId||'',teacherName:t?.name||currentUser.name||'المعلم',createdAt:new Date().toISOString()});
+        const selectedClassId=String(currentUser?.selectedClassId||'');
+        const selectedClassIndex=schoolData.findIndex(c=>String(c?.id||'')===selectedClassId);
+        const selectedClassName=selectedClassIndex>=0?(schoolData[selectedClassIndex].name||''):(target.className||'');
+        homeworkData.push({id:createStableId('homework'),title,description,subject,date,audience,...target,classId:selectedClassId||target.classId||'',classIndex:selectedClassIndex>=0?selectedClassIndex:(target.classIndex??null),className:selectedClassName,teacherId:t?.id||currentUser.teacherId||'',teacherName:t?.name||currentUser.name||'المعلم',createdAt:new Date().toISOString()});
         saveData(); openHomeworkModal(); alert('تم نشر الواجب بنجاح.');
     }
     function deleteHomework(id){
