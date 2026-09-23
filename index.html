@@ -3340,11 +3340,49 @@ function acknowledgeAnnouncement(id) {
         ['adminNewPasswordInput','adminConfirmPasswordInput'].forEach(id=>addSecretToggle(id));
     }
 
-    function performLogin() {
+    async function refreshLoginDataFromFirebase() {
+        if (!window.FirebaseCloud || !window.FirebaseCloud.enabled || typeof window.FirebaseCloud.load !== 'function') {
+            throw new Error('Firebase غير متاح في هذه الصفحة.');
+        }
+        const cloud = await window.FirebaseCloud.load();
+        if (!cloud || typeof cloud !== 'object') {
+            throw new Error('لم يتم العثور على بيانات schoolSystem في Firebase.');
+        }
+        if (!validateCloudPayload(cloud)) {
+            throw new Error('بيانات schoolSystem في Firebase غير مكتملة أو غير صالحة.');
+        }
+        applyCloudPayloadToLocal(cloud, {silent:true});
+        if (cloud.adminCode !== undefined && String(cloud.adminCode).trim()) {
+            adminCredentials.password = String(cloud.adminCode).trim();
+        }
+        if (cloud.adminName !== undefined && String(cloud.adminName).trim()) {
+            adminCredentials.name = String(cloud.adminName).trim();
+        }
+        if (cloud.updatedAt) lastAppliedCloudUpdatedAt = String(cloud.updatedAt);
+        APP_SECURITY.lastGoodCloudUpdatedAt = String(cloud.updatedAt || '');
+        APP_SECURITY.lastGoodCloudSnapshot = cloud;
+        ensureStableIds();
+        cloudReady = true;
+        updateCloudStatus('تم تحديث بيانات الدخول من Firebase ✓', '#16803c');
+        return cloud;
+    }
+
+    async function performLogin() {
         const enteredCode = normalizeLoginCode(document.getElementById('loginCodeInput')?.value || '');
         if (!enteredCode) { alert('الرجاء إدخال كود الدخول.'); return; }
         if (loginIsLocked()) return;
-        if (!cloudReady) { alert('انتظر اكتمال الاتصال بقاعدة Firebase ثم حاول مرة أخرى.'); return; }
+
+        // عند النشر على GitHub Pages لا نعتمد على localStorage القديم؛
+        // نقرأ أحدث نسخة من Firebase في كل محاولة دخول حتى يعمل الكود الصحيح
+        // حتى لو كان المستخدم قد غيّر الكود من جهاز آخر.
+        try {
+            await refreshLoginDataFromFirebase();
+        } catch (cloudError) {
+            console.error('Login Firebase refresh failed:', cloudError);
+            updateCloudStatus('فشل تحميل بيانات الدخول من Firebase', '#b42318');
+            alert('⚠️ تعذر تحميل بيانات الدخول من Firebase.\n\nتأكد من اتصال Firebase وقواعد Realtime Database، ثم أعد المحاولة.\n\nلم يتم اعتبار الكود خاطئاً.');
+            return;
+        }
 
         // المدير: الكود الشخصي المحفوظ في Firebase.
         if (enteredCode === normalizeLoginCode(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE)) {
