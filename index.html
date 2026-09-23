@@ -5836,8 +5836,14 @@ function acknowledgeAnnouncement(id) {
         if (currentUser && currentUser.role === 'parent') {
             filteredClasses = schoolData.filter((cls, idx) => idx === currentUser.classIndex);
         } else if (currentUser && currentUser.role === 'teacher') {
-            const teacherClassIndices = getCurrentTeacherAssignedClassIndices();
-            filteredClasses = schoolData.filter((cls, idx) => teacherClassIndices.includes(idx));
+            // بعد تسجيل دخول المعلم بصف محدد، لا نعرض له أي صف آخر في النظام.
+            const selectedClassId = String(currentUser.selectedClassId || '').trim();
+            if (selectedClassId) {
+                filteredClasses = schoolData.filter(cls => String(cls?.id || '') === selectedClassId);
+            } else {
+                const teacherClassIndices = getCurrentTeacherAssignedClassIndices();
+                filteredClasses = schoolData.filter((cls, idx) => teacherClassIndices.includes(idx));
+            }
         }
 
         if (!filteredClasses.length) {
@@ -5946,9 +5952,16 @@ function acknowledgeAnnouncement(id) {
     function selectClass(index) {
         if (!schoolData[index]) return;
         if (currentUser?.role === 'parent' && Number(index) !== Number(currentUser.classIndex)) { alert('لا يمكنك مشاهدة بيانات أي صف أو طالب آخر.'); return; }
-        if (currentUser && currentUser.role === 'teacher' && !isTeacherAllowedClass(index)) {
-            alert('عذراً، هذا الصف غير مضاف ضمن الصفوف المسموحة لهذا المعلم.');
-            return;
+        if (currentUser && currentUser.role === 'teacher') {
+            const selectedClassId = String(currentUser.selectedClassId || '').trim();
+            if (selectedClassId && String(schoolData[index]?.id || '') !== selectedClassId) {
+                alert('عذراً، هذا الصف ليس الصف المحدد عند دخول المعلم.');
+                return;
+            }
+            if (!selectedClassId && !isTeacherAllowedClass(index)) {
+                alert('عذراً، هذا الصف غير مضاف ضمن الصفوف المسموحة لهذا المعلم.');
+                return;
+            }
         }
         currentClassIndex = index;
 
@@ -7727,7 +7740,20 @@ function acknowledgeAnnouncement(id) {
         const parentLevelList = (liveParentClass.studentLevels && Array.isArray(liveParentClass.studentLevels[parentBehaviorKey])) ? liveParentClass.studentLevels[parentBehaviorKey] : [];
         const parentLevelRows = parentLevelList.filter(x=>x && x.level!=null).map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #e1e7ec;border-radius:8px;background:#fff;margin-bottom:6px;"><b>${escapeGlobalSearchHTML(x.lesson||'المادة')}</b><span style="font-size:18px;letter-spacing:2px;">${'⭐'.repeat(Math.max(1,Math.min(5,Number(x.level)||0)))}</span></div>`).join('');
         const parentBehaviorSection = `<div class="pro-panel" id="parentBehaviorPanel"><div class="pro-toolbar" style="justify-content:space-between"><h3 style="margin:0">⭐ السلوك والمستوى</h3><span style="font-size:11px;color:#687985">بيانات ${escapeGlobalSearchHTML(studentName)}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div><h4 style="margin:6px 0;color:#34495e">📝 السلوك</h4>${parentBehaviorText || '<div class="pro-empty">لا توجد تقييمات سلوك مسجلة حالياً.</div>'}</div><div><h4 style="margin:6px 0;color:#34495e">⭐ المستوى</h4>${parentLevelRows || '<div class="pro-empty">لا توجد تقييمات مستوى مسجلة حالياً.</div>'}</div></div></div>`;
-        const parentHomework = homeworkData.filter(h => h && (h.audience === 'all' || (h.targetCode && String(h.targetCode) === String(currentUser.code))));
+        // واجبات الصف تصل فقط إلى طلاب الصف الذي حدده المعلم عند الدخول.
+        // وإذا كان الواجب لطالب محدد، يظهر لذلك الطالب فقط.
+        const parentClassId = String(f.classObj?.id || '');
+        const parentHomework = homeworkData.filter(h => {
+            if (!h) return false;
+            const sameStudent = h.targetCode && String(h.targetCode) === String(currentUser.code);
+            if (h.audience === 'student') return !!sameStudent;
+            if (h.audience !== 'all') return false;
+            // الواجبات الجديدة مرتبطة بالصف. الواجبات القديمة بلا classId تبقى ظاهرة للتوافق.
+            const homeworkClassId = String(h.classId || '');
+            if (homeworkClassId) return homeworkClassId === parentClassId;
+            if (h.classIndex != null && f.classIndex != null) return Number(h.classIndex) === Number(f.classIndex);
+            return true;
+        });
         const parentHomeworkRows = parentHomework.sort((a,b)=>String(b.date||b.createdAt||'').localeCompare(String(a.date||a.createdAt||''))).map(h=>`<tr><td><b>${escapeGlobalSearchHTML(h.title||'واجب')}</b><div style="white-space:pre-wrap;margin-top:4px;color:#667;">${escapeGlobalSearchHTML(h.description||'')}</div></td><td>${escapeGlobalSearchHTML(h.subject||'-')}</td><td>${escapeGlobalSearchHTML(h.teacherName||'-')}</td><td>${escapeGlobalSearchHTML(h.date||'-')}</td></tr>`).join('') || '<tr><td colspan="4" class="pro-empty">لا توجد واجبات مسجلة لابنك.</td></tr>';
         const modal=document.createElement('div');
         modal.id='studentRoleDashboardModal';
@@ -7787,7 +7813,13 @@ function acknowledgeAnnouncement(id) {
         const old=document.getElementById('homeworkModal'); if(old) old.remove();
         const students=getTeacherHomeworkStudents();
         const t=getCurrentTeacher();
-        const rows=homeworkData.filter(h=>String(h.teacherId||'')===String(t?.id||currentUser.teacherId||'') || String(h.teacherName||'')===String(currentUser.name||''))
+        const selectedClassIdForHomework = String(currentUser?.selectedClassId || '');
+        const selectedSubjectForHomework = String(currentUser?.teacherSubject || '').trim();
+        const rows=homeworkData.filter(h=>
+            (String(h.teacherId||'')===String(t?.id||currentUser.teacherId||'') || String(h.teacherName||'')===String(currentUser.name||'')) &&
+            (!selectedClassIdForHomework || String(h.classId||'')===selectedClassIdForHomework) &&
+            (!selectedSubjectForHomework || String(h.subject||'').trim()===selectedSubjectForHomework)
+          )
           .sort((a,b)=>String(b.date||b.createdAt||'').localeCompare(String(a.date||a.createdAt||'')))
           .map(h=>`<tr><td>${escapeGlobalSearchHTML(h.title||'-')}</td><td>${escapeGlobalSearchHTML(h.subject||'-')}</td><td>${h.audience==='all'?'جميع الطلاب':'طالب محدد: '+escapeGlobalSearchHTML(h.studentName||'-')}</td><td>${escapeGlobalSearchHTML(h.date||'-')}</td><td><button type="button" onclick="deleteHomework('${String(h.id||'').replace(/'/g,"\\'")}')" style="background:#c0392b">حذف</button></td></tr>`).join('') || '<tr><td colspan="5" class="pro-empty">لا توجد واجبات قديمة.</td></tr>';
         const modal=document.createElement('div'); modal.id='homeworkModal'; modal.className='modal'; modal.style.cssText='display:flex;position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.62);padding:10px;align-items:center;justify-content:center;overflow:auto;';
@@ -7817,10 +7849,17 @@ function acknowledgeAnnouncement(id) {
             if(!st){alert('اختر الطالب المطلوب.');return;}
             target={targetCode:st.code,targetStudentId:st.studentId,studentName:st.name,classIndex:st.classIndex,className:st.className};
         }
-        const selectedClassId=String(currentUser?.selectedClassId||'');
+        const selectedClassId=String(currentUser?.selectedClassId||'').trim();
         const selectedClassIndex=schoolData.findIndex(c=>String(c?.id||'')===selectedClassId);
-        const selectedClassName=selectedClassIndex>=0?(schoolData[selectedClassIndex].name||''):(target.className||'');
-        homeworkData.push({id:createStableId('homework'),title,description,subject,date,audience,...target,classId:selectedClassId||target.classId||'',classIndex:selectedClassIndex>=0?selectedClassIndex:(target.classIndex??null),className:selectedClassName,teacherId:t?.id||currentUser.teacherId||'',teacherName:t?.name||currentUser.name||'المعلم',createdAt:new Date().toISOString()});
+        if(selectedClassIndex<0 || !selectedClassId){alert('لم يتم تحديد الصف الذي دخل به المعلم. أعد تسجيل الدخول واختر الصف والمادة.');return;}
+        const selectedClassName=schoolData[selectedClassIndex].name||'';
+        const teacher=getCurrentTeacher();
+        if(!getTeacherSubjectsForClass(teacher,selectedClassId).includes(subject)){
+            alert('هذه المادة غير مسموحة للمعلم في الصف المحدد.');
+            return;
+        }
+        // لا نسمح بحفظ الواجب إلا للصف والمادة اللذين تم اختيارهما عند دخول المعلم.
+        homeworkData.push({id:createStableId('homework'),title,description,subject,date,audience,...target,classId:selectedClassId,classIndex:selectedClassIndex,className:selectedClassName,teacherId:t?.id||currentUser.teacherId||'',teacherName:t?.name||currentUser.name||'المعلم',createdAt:new Date().toISOString()});
         saveData(); openHomeworkModal(); alert('تم نشر الواجب بنجاح.');
     }
     function deleteHomework(id){
