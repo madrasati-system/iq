@@ -2630,6 +2630,9 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
     let cloudSaveTimer = null;
     // يمنع مزامنة Firebase القديمة من الكتابة فوق تعديل المدير مباشرة بعد الضغط على زر الحالة.
     let cloudSavePending = false;
+    // آخر نسخة محلية ننتظر تأكيد وصولها من Firebase؛ يمنع رجوع نسخة أقدم بعد الحذف/التعديل.
+    let cloudSaveExpectedRevision = '';
+    let cloudSaveConfirmTimer = null;
     let editingAssistantId = null;
 
     let currentClassIndex = null;
@@ -2974,24 +2977,43 @@ function acknowledgeAnnouncement(id) {
         if (!window.FirebaseCloud || !window.FirebaseCloud.enabled) return;
         cloudSavePending = true;
         clearTimeout(cloudSaveTimer);
+        clearTimeout(cloudSaveConfirmTimer);
         cloudSaveTimer = setTimeout(async () => {
-            if (!cloudReady) { cloudSavePending = false; return; }
+            if (!cloudReady) {
+                // نبقي علامة التعديل حتى لا تسمح المزامنة القديمة بإرجاع البيانات المحذوفة.
+                return;
+            }
             try {
                 const payload = getCloudPayload();
                 if (!validateCloudPayload(payload)) {
                     cloudSavePending = false;
+                    cloudSaveExpectedRevision = '';
                     updateCloudStatus('تم منع حفظ بيانات غير صالحة في Firebase', '#b42318');
                     console.error('Cloud save blocked: invalid payload structure.');
                     return;
                 }
-                lastAppliedCloudUpdatedAt = String(payload.updatedAt || '');
+                const revision = String(payload.updatedAt || new Date().toISOString());
+                payload.updatedAt = revision;
+                lastAppliedCloudUpdatedAt = revision;
+                cloudSaveExpectedRevision = revision;
+                // لا نرفع cloudSavePending=false هنا. ننتظر أول snapshot من Firebase
+                // يحمل نفس revision؛ وبذلك لا تستطيع نسخة أقدم إعادة البيانات المحذوفة.
                 await window.FirebaseCloud.save(payload);
-                APP_SECURITY.lastGoodCloudUpdatedAt = lastAppliedCloudUpdatedAt;
+                APP_SECURITY.lastGoodCloudUpdatedAt = revision;
                 APP_SECURITY.lastGoodCloudSnapshot = payload;
-                cloudSavePending = false;
-                updateCloudStatus('تم الحفظ في Firebase ☁️', '#16803c');
+                updateCloudStatus('تم الحفظ في Firebase ☁️ — بانتظار تأكيد المزامنة', '#16803c');
+
+                // احتياط: إذا لم تصل إشارة listener بسبب انقطاع مؤقت، لا نبقى محجوبين للأبد.
+                cloudSaveConfirmTimer = setTimeout(() => {
+                    if (cloudSavePending && cloudSaveExpectedRevision === revision) {
+                        cloudSavePending = false;
+                        cloudSaveExpectedRevision = '';
+                        updateCloudStatus('تم الحفظ في Firebase ☁️', '#16803c');
+                    }
+                }, 5000);
             } catch (e) {
                 cloudSavePending = false;
+                cloudSaveExpectedRevision = '';
                 console.error('Cloud save failed:', e);
                 updateCloudStatus('تعذر الحفظ السحابي — البيانات المحلية محفوظة', '#b42318');
             }
@@ -3183,10 +3205,26 @@ function acknowledgeAnnouncement(id) {
             if (!rawCloud) return;
             const cloud = normalizeCloudPayload(rawCloud);
             if (!cloud) return;
-            // إذا كان المدير قد عدّل حالة للتو، لا تسمح لنسخة Firebase الأقدم
-            // بأن تعيد الحالة السابقة قبل اكتمال الحفظ السحابي المؤجل.
-            if (cloudSavePending) return;
             const revision = String(cloud.updatedAt || '');
+
+            // إذا كان لدينا تعديل محلي لم يُؤكَّد بعد، تجاهل أي نسخة من Firebase
+            // لا تحمل نفس revision. هذا مهم جداً للحذف: يمنع النسخة القديمة من
+            // إعادة العنصر المحذوف إلى الشاشة/localStorage.
+            if (cloudSavePending) {
+                if (cloudSaveExpectedRevision && revision !== cloudSaveExpectedRevision) {
+                    return;
+                }
+                if (cloudSaveExpectedRevision && revision === cloudSaveExpectedRevision) {
+                    clearTimeout(cloudSaveConfirmTimer);
+                    cloudSavePending = false;
+                    cloudSaveExpectedRevision = '';
+                    lastAppliedCloudUpdatedAt = revision;
+                    updateCloudStatus('تمت مزامنة التعديل مع Firebase ✓', '#16803c');
+                    return;
+                }
+                return;
+            }
+
             if (revision && revision === lastAppliedCloudUpdatedAt) return;
             lastAppliedCloudUpdatedAt = revision;
             applyCloudPayloadToLocal(cloud, {silent:true});
