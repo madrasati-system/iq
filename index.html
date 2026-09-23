@@ -1287,6 +1287,38 @@ table td,table th { line-height:1.55; }
       async save(data) {
         return firebaseDB.ref('schoolSystem').set(data);
       },
+      async getFactoryResetControl() {
+        const snap = await firebaseDB.ref('systemControl/factoryReset').once('value');
+        return snap.exists() ? snap.val() : null;
+      },
+      async factoryReset() {
+        const current = await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
+        const oldGen = String(current.exists() ? (current.val() || '0') : '0');
+        const nextGen = String((Number(oldGen) || 0) + 1) + '_' + Date.now();
+        // تحديث علامة الجيل وحذف البيانات والنسخ الاحتياطية في عملية واحدة.
+        await firebaseDB.ref().update({
+          'systemControl/factoryReset': { generation: nextGen, resetAt: new Date().toISOString() },
+          'schoolSystem': null,
+          'schoolSystemBackups': null
+        });
+        return nextGen;
+      },
+      async saveForGeneration(data, expectedGeneration) {
+        const snap = await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
+        const actual = String(snap.exists() ? (snap.val() || '0') : '0');
+        if (String(expectedGeneration || '0') !== actual) {
+          const err = new Error('FACTORY_RESET_GENERATION_CHANGED');
+          err.code = 'FACTORY_RESET_GENERATION_CHANGED';
+          throw err;
+        }
+        return firebaseDB.ref('schoolSystem').set(data);
+      },
+      listenFactoryReset(callback) {
+        const ref = firebaseDB.ref('systemControl/factoryReset');
+        const handler = snap => callback(snap.exists() ? snap.val() : null);
+        ref.on('value', handler);
+        return () => ref.off('value', handler);
+      },
       listen(callback) {
         const ref = firebaseDB.ref('schoolSystem');
         const handler = snap => callback(snap.exists() ? snap.val() : null);
@@ -1294,6 +1326,14 @@ table td,table th { line-height:1.55; }
         return () => ref.off('value', handler);
       },
       async saveBackup(key, data) {
+        const snap = await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
+        const actual = String(snap.exists() ? (snap.val() || '0') : '0');
+        const expected = String(data?.resetGeneration || '0');
+        if (expected !== actual) {
+          const err = new Error('FACTORY_RESET_GENERATION_CHANGED');
+          err.code = 'FACTORY_RESET_GENERATION_CHANGED';
+          throw err;
+        }
         return firebaseDB.ref('schoolSystemBackups/' + key).set(data);
       },
       async loadBackups() {
@@ -1959,6 +1999,7 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
       <button type="button" onclick="startSystemReset('classes')" style="background:#c0392b;font-weight:900;">🗑️ حذف كل الصفوف</button>
       <button type="button" onclick="startSystemReset('teachers')" style="background:#d35400;font-weight:900;">🗑️ مسح كل المعلمين</button>
       <button type="button" onclick="startSystemReset('students')" style="background:#8e44ad;font-weight:900;">🗑️ مسح كل الطلاب</button>
+      <button type="button" onclick="startFactoryReset()" style="background:#7f0000;font-weight:1000;border:2px solid #ffb3b3;box-shadow:0 6px 18px rgba(127,0,0,.25);">🔥 ترسيت عام — إعادة ضبط مصنع</button>
     </div>
     <div style="font-size:11px;color:#718294;margin-top:12px;">🔐 لتنفيذ أي عملية يجب إدخال الرمز السري للمدير بشكل صحيح <b>3 مرات متتالية</b>.</div>
   </div>
@@ -2633,6 +2674,12 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
     // آخر نسخة محلية ننتظر تأكيد وصولها من Firebase؛ يمنع رجوع نسخة أقدم بعد الحذف/التعديل.
     let cloudSaveExpectedRevision = '';
     let cloudSaveConfirmTimer = null;
+    // جيل قاعدة البيانات الحالي. عند الترسيت العام يتغير هذا الرقم،
+    // وبذلك تمنع الأجهزة/التبويبات القديمة من إعادة رفع بياناتها القديمة.
+    let factoryResetGeneration = '0';
+    let factoryResetControlUnsubscribe = null;
+    let factoryResetControlReady = false;
+    let factoryResetInProgress = false;
     let editingAssistantId = null;
 
     let currentClassIndex = null;
@@ -2950,6 +2997,7 @@ function acknowledgeAnnouncement(id) {
         pruneExpiredComplaintsData();
         return {
             version: 2,
+            resetGeneration: String(factoryResetGeneration || '0'),
             updatedAt: new Date().toISOString(),
             adminCode: String(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE),
             adminName: String(adminCredentials.name || 'مدير النظام'),
@@ -2994,11 +3042,18 @@ function acknowledgeAnnouncement(id) {
                 }
                 const revision = String(payload.updatedAt || new Date().toISOString());
                 payload.updatedAt = revision;
+                payload.resetGeneration = String(factoryResetGeneration || '0');
+                // قبل الحفظ نتحقق من جيل الترسيت في Firebase. إذا كان جهاز آخر
+                // قد نفذ ترسيتاً عاماً، يمنع هذا الجهاز القديم من إعادة رفع بياناته.
+                if (typeof window.FirebaseCloud.saveForGeneration === 'function') {
+                    await window.FirebaseCloud.saveForGeneration(payload, factoryResetGeneration);
+                } else {
+                    await window.FirebaseCloud.save(payload);
+                }
                 lastAppliedCloudUpdatedAt = revision;
                 cloudSaveExpectedRevision = revision;
                 // لا نرفع cloudSavePending=false هنا. ننتظر أول snapshot من Firebase
                 // يحمل نفس revision؛ وبذلك لا تستطيع نسخة أقدم إعادة البيانات المحذوفة.
-                await window.FirebaseCloud.save(payload);
                 APP_SECURITY.lastGoodCloudUpdatedAt = revision;
                 APP_SECURITY.lastGoodCloudSnapshot = payload;
                 updateCloudStatus('تم الحفظ في Firebase ☁️ — بانتظار تأكيد المزامنة', '#16803c');
@@ -3045,7 +3100,22 @@ function acknowledgeAnnouncement(id) {
             }
             const rawCloud = await window.FirebaseCloud.load();
             firebaseOnline = true;
+            // اقرأ علامة آخر ترسيت عام قبل قبول أي بيانات سحابية.
+            if (typeof window.FirebaseCloud.getFactoryResetControl === 'function') {
+                const control = await window.FirebaseCloud.getFactoryResetControl();
+                factoryResetGeneration = String(control?.generation || '0');
+                factoryResetControlReady = true;
+            }
             const cloud = normalizeCloudPayload(rawCloud);
+            if (cloud && String(cloud.resetGeneration || '0') !== String(factoryResetGeneration || '0')) {
+                console.warn('تم تجاهل بيانات Firebase من جيل قديم بعد ترسيت عام.');
+                cloudReady = true;
+                startFactoryResetControlSync();
+                startRealtimeCloudSync();
+                scheduleAutomaticBackup();
+                updateCloudStatus('تم تجاهل بيانات قديمة بعد الترسيت العام ✓', '#16803c');
+                return true;
+            }
             if (cloud && (cloud.schoolData !== undefined || cloud.teachersData !== undefined)) {
                 if (!validateCloudPayload(cloud)) {
                     console.warn('Firebase payload structure was repaired/normalized but is still incomplete.', rawCloud);
@@ -3198,6 +3268,42 @@ function acknowledgeAnnouncement(id) {
         if (!options.silent) updateCloudStatus('تمت المزامنة المباشرة مع Firebase 🔄', '#16803c');
     }
 
+    function stopStaleClientAfterFactoryReset(newGeneration){
+        factoryResetGeneration = String(newGeneration || '0');
+        cloudSavePending = false;
+        cloudSaveExpectedRevision = '';
+        clearTimeout(cloudSaveTimer);
+        clearTimeout(cloudSaveConfirmTimer);
+        if (automaticBackupTimer) { clearInterval(automaticBackupTimer); automaticBackupTimer = null; }
+        try {
+            const keepKeys=new Set(['theme','appearance','accentColor']);
+            const keys=[];
+            for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k && !keepKeys.has(k))keys.push(k);}
+            keys.forEach(k=>{try{localStorage.removeItem(k);}catch(_){}});
+            sessionStorage.clear();
+        } catch(_) {}
+        // أوقف أي مستمع قديم حتى لا يعيد تطبيق بيانات النسخة السابقة.
+        if (realtimeUnsubscribe) { try{realtimeUnsubscribe();}catch(_){} realtimeUnsubscribe=null; }
+        try { if (typeof window.__loadProfessionalAttendanceFromCloud === 'function') window.__loadProfessionalAttendanceFromCloud([]); } catch(_) {}
+        try { if (typeof window.__loadProfessionalAuditFromCloud === 'function') window.__loadProfessionalAuditFromCloud([]); } catch(_) {}
+        schoolData=[]; teachersData=[]; teachersAbsenceData={}; announcementsData=[]; complaintsData=[]; homeworkData=[]; subjectsData=[]; assistantsData=[]; guestSupervisorsData=[]; monitorsData=[]; monitorNotesData=[]; monitorInventoryReportsData=[]; monitorMessagesData=[];
+        alert('⚠️ تم تنفيذ ترسيت عام من جهاز آخر. تم تجاهل ومسح أي نسخة قديمة من هذا الجهاز لمنع رجوع البيانات.');
+        window.location.reload();
+    }
+
+    function startFactoryResetControlSync(){
+        if (!window.FirebaseCloud?.enabled || typeof window.FirebaseCloud.listenFactoryReset !== 'function') return;
+        if (factoryResetControlUnsubscribe) { try{factoryResetControlUnsubscribe();}catch(_){} }
+        factoryResetControlUnsubscribe = window.FirebaseCloud.listenFactoryReset(control=>{
+            if(!control || !control.generation) return;
+            const incoming=String(control.generation);
+            if(!factoryResetControlReady){ factoryResetGeneration=incoming; factoryResetControlReady=true; return; }
+            if(incoming!==String(factoryResetGeneration||'0') && !factoryResetInProgress){
+                stopStaleClientAfterFactoryReset(incoming);
+            }
+        });
+    }
+
     function startRealtimeCloudSync() {
         if (!window.FirebaseCloud?.enabled || typeof window.FirebaseCloud.listen !== 'function') return;
         if (realtimeUnsubscribe) realtimeUnsubscribe();
@@ -3237,6 +3343,7 @@ function acknowledgeAnnouncement(id) {
     function makeBackupPayload() {
         return {
             format:'school-system-backup', version:3, exportedAt:new Date().toISOString(),
+            resetGeneration:String(factoryResetGeneration || '0'),
             schoolData, teachersData, teachersAbsenceData, announcementsData, homeworkData, subjectsData, adminCredentials, assistantsData, guestSupervisorsData, monitorsData, monitorNotesData, monitorInventoryReportsData, monitorMessagesData,
             attendanceData:(typeof window.__professionalAttendanceDataForCloud==='function'?window.__professionalAttendanceDataForCloud():[]),
             auditLog:(typeof window.__professionalAuditLogForCloud==='function'?window.__professionalAuditLogForCloud():[])
@@ -4306,6 +4413,83 @@ function acknowledgeAnnouncement(id) {
     }
 
     function toggleSystemResetPasswords(show){[1,2,3].forEach(i=>{const e=document.getElementById('systemResetPass'+i);if(e)e.type=show?'text':'password';});}
+
+    function startFactoryReset(){
+        if(!isPrimaryAdminUser()){alert('الترسيت العام متاح لمدير النظام فقط.');return;}
+        const old=document.getElementById('factoryResetPasswordModal'); if(old) old.remove();
+        const modal=document.createElement('div'); modal.id='factoryResetPasswordModal';
+        modal.style.cssText='position:fixed;inset:0;background:rgba(35,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:2147483647;padding:14px;';
+        modal.innerHTML=`<div style="width:min(560px,96vw);background:#fff;border-radius:20px;padding:20px;box-shadow:0 25px 80px rgba(0,0,0,.5);direction:rtl;border:3px solid #7f0000;">
+          <h3 style="margin:0 0 10px;color:#7f0000;font-size:20px;">🔥 ترسيت عام — إعادة ضبط مصنع</h3>
+          <div style="background:#fff0f0;border:2px solid #e0a0a0;border-radius:12px;padding:12px;color:#7f0000;font-weight:900;line-height:1.9;margin-bottom:12px;">
+            ⚠️ تحذير شديد جداً: سيتم حذف <b>جميع بيانات النظام</b> من الجهاز ومن Firebase، بما فيها الصفوف والطلاب والمعلمين والأكواد والدرجات والحضور والملاحظات والرسائل والمواد وسجلات التدقيق والنسخ الاحتياطية السحابية. <b>لا يمكن التراجع عن العملية.</b>
+          </div>
+          <p style="font-size:12px;color:#555;line-height:1.8;margin-top:0;">للتأكد من أن العملية ينفذها المدير، أدخل باسورد المدير الصحيح <b>3 مرات متتالية</b>. إذا أخطأت في أي مرة فلن يتم حذف أي شيء.</p>
+          ${[1,2,3].map(i=>`<div style="margin:9px 0;"><label style="font-size:11px;font-weight:900;">التحقق ${i}</label><input type="password" id="factoryResetPass${i}" inputmode="numeric" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:4px;padding:11px;border:1px solid #ccd6dd;border-radius:9px;" placeholder="أدخل باسورد المدير"></div>`).join('')}
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-top:8px;"><input type="checkbox" onchange="toggleFactoryResetPasswords(this.checked)"> ✓ إظهار الرموز</label>
+          <div style="display:flex;gap:8px;margin-top:16px;"><button type="button" onclick="confirmFactoryReset()" style="flex:1;background:#7f0000;font-weight:1000;">🔥 متابعة الترسيت العام</button><button type="button" onclick="document.getElementById('factoryResetPasswordModal')?.remove()" style="background:#7f8c8d;">إلغاء</button></div>
+        </div>`;
+        document.body.appendChild(modal);
+        setTimeout(()=>document.getElementById('factoryResetPass1')?.focus(),50);
+    }
+
+    function toggleFactoryResetPasswords(show){[1,2,3].forEach(i=>{const e=document.getElementById('factoryResetPass'+i);if(e)e.type=show?'text':'password';});}
+
+    async function confirmFactoryReset(){
+        if(!isPrimaryAdminUser()){alert('الترسيت العام متاح لمدير النظام فقط.');return;}
+        const expected=String(adminCredentials?.password||'').trim();
+        const vals=[1,2,3].map(i=>String(document.getElementById('factoryResetPass'+i)?.value||'').trim());
+        if(!expected){alert('❌ لم يتم العثور على باسورد المدير. لم يتم تنفيذ أي حذف.');return;}
+        if(vals.some(v=>!v) || vals.some(v=>v!==expected)){
+            alert('❌ الباسورد غير صحيح في إحدى المحاولات. يجب إدخال باسورد المدير الصحيح 3 مرات. لم يتم حذف أي بيانات.');
+            return;
+        }
+        const sure=confirm('⚠️ تحذير نهائي جداً\n\nأنت على وشك إعادة ضبط النظام بالكامل إلى حالة المصنع.\n\nسيتم حذف جميع البيانات المحلية وجميع بيانات schoolSystem وجميع النسخ الاحتياطية schoolSystemBackups من Firebase.\n\nاضغط «موافق / نعم» للمتابعة، أو «إلغاء» للتراجع.');
+        if(!sure)return;
+
+        const btn=document.querySelector('#factoryResetPasswordModal button[onclick="confirmFactoryReset()"]');
+        if(btn){btn.disabled=true;btn.textContent='⏳ جارٍ الحذف الكامل...';}
+        try{
+            factoryResetInProgress=true;
+            let newFactoryGeneration = String(factoryResetGeneration || '0');
+            if(window.FirebaseCloud?.enabled){
+                if(typeof window.FirebaseCloud.factoryReset==='function') {
+                    newFactoryGeneration = String(await window.FirebaseCloud.factoryReset());
+                } else {
+                    if(typeof firebaseDB==='undefined' || !firebaseDB) throw new Error('اتصال Firebase غير متاح.');
+                    const currentSnap=await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
+                    const oldGen=String(currentSnap.exists()?(currentSnap.val()||'0'):'0');
+                    newFactoryGeneration=String((Number(oldGen)||0)+1)+'_'+Date.now();
+                    await firebaseDB.ref().update({
+                        'systemControl/factoryReset':{generation:newFactoryGeneration,resetAt:new Date().toISOString()},
+                        'schoolSystem':null,'schoolSystemBackups':null
+                    });
+                }
+                factoryResetGeneration=newFactoryGeneration;
+            }
+
+            if(typeof realtimeUnsubscribe==='function' && realtimeUnsubscribe){try{realtimeUnsubscribe();}catch(_){}}
+            realtimeUnsubscribe=null;
+            cloudSavePending=false;
+            clearTimeout(cloudSaveTimer);
+            if(typeof automaticBackupTimer!=='undefined' && automaticBackupTimer){clearInterval(automaticBackupTimer);automaticBackupTimer=null;}
+
+            // مسح كل التخزين المحلي الخاص بالنظام حتى لا تعود البيانات القديمة بعد إعادة التشغيل.
+            const keepKeys=new Set(['theme','appearance','accentColor']);
+            const keys=[];
+            for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k && !keepKeys.has(k))keys.push(k);}
+            keys.forEach(k=>{try{localStorage.removeItem(k);}catch(_){}});
+
+            sessionStorage.clear();
+            alert('✅ تم تنفيذ إعادة ضبط المصنع بنجاح. تم حذف بيانات النظام من Firebase والنسخ الاحتياطية والتخزين المحلي. سيتم إعادة تحميل النظام الآن.');
+            window.location.reload();
+        }catch(error){
+            factoryResetInProgress=false;
+            console.error('Factory reset failed:',error);
+            if(btn){btn.disabled=false;btn.textContent='🔥 متابعة الترسيت العام';}
+            alert('❌ تعذر إكمال الترسيت العام. لم يتم مسح التخزين المحلي حتى لا تفقد بياناتك دون التأكد من حذف Firebase.\n\nالخطأ: '+(error?.message||error));
+        }
+    }
 
     async function confirmSystemReset(type){
         const labels={classes:'حذف كل الصفوف',teachers:'مسح كل المعلمين',students:'مسح كل الطلاب'};
