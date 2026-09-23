@@ -3379,8 +3379,21 @@ function acknowledgeAnnouncement(id) {
             await refreshLoginDataFromFirebase();
         } catch (cloudError) {
             console.error('Login Firebase refresh failed:', cloudError);
+            const firebaseCode = String(cloudError?.code || '').trim();
+            const firebaseMessage = String(cloudError?.message || '').trim();
+            let reason = 'تعذر الوصول إلى بيانات schoolSystem.';
+            if (/permission_denied|permission denied/i.test(firebaseCode + ' ' + firebaseMessage)) {
+                reason = 'تم رفض قراءة قاعدة Realtime Database بسبب قواعد Firebase (Permission Denied).';
+            } else if (/network|offline|disconnected|failed to fetch/i.test(firebaseCode + ' ' + firebaseMessage)) {
+                reason = 'يوجد خطأ في الاتصال بالإنترنت أو الاتصال بخدمة Firebase.';
+            } else if (/schoolSystem/i.test(firebaseMessage)) {
+                reason = firebaseMessage;
+            }
             updateCloudStatus('فشل تحميل بيانات الدخول من Firebase', '#b42318');
-            alert('⚠️ تعذر تحميل بيانات الدخول من Firebase.\n\nتأكد من اتصال Firebase وقواعد Realtime Database، ثم أعد المحاولة.\n\nلم يتم اعتبار الكود خاطئاً.');
+            alert('⚠️ تعذر تحميل بيانات الدخول من Firebase.\n\n' + reason + '\n\n' +
+                (firebaseCode ? 'رمز الخطأ: ' + firebaseCode + '\n' : '') +
+                (firebaseMessage && firebaseMessage !== firebaseCode ? 'تفاصيل: ' + firebaseMessage + '\n' : '') +
+                '\nلم يتم اعتبار الكود خاطئاً.');
             return;
         }
 
