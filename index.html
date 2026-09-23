@@ -705,6 +705,47 @@ table {
 </style>
 
 
+<style id="advanced-mobile-system-layout">
+/* ===== واجهة الهاتف المتقدمة: مختلفة فعلياً عن التابلت والكمبيوتر ===== */
+@media (max-width:480px){
+  body{padding:6px;background:#f4f6f8;}
+  .container,.main-container,.content,main{width:100%!important;max-width:none!important;}
+  header{position:relative;margin:0 0 8px;padding:10px;border-radius:14px;align-items:stretch;}
+  header h2{font-size:16px!important;line-height:1.35;flex:1 1 100%;} 
+  .header-actions{width:100%;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;}
+  .header-actions button,.header-actions .btn{width:100%!important;min-width:0;}
+  .classes-nav{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto;gap:7px;padding:2px 1px 8px;margin-bottom:7px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .classes-nav::-webkit-scrollbar{display:none;}
+  .class-tab{flex:0 0 auto;padding:10px 14px;border-radius:12px;font-size:13px;min-height:44px;}
+  .section-box{padding:11px;border-radius:14px;margin-bottom:8px;}
+  .section-box-header{align-items:flex-start;}
+  .section-box-header .class-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .section-box-header .class-actions button{width:100%;min-width:0;}
+  .classroom-layout{display:flex!important;flex-direction:column!important;gap:9px!important;}
+  .column-section{width:100%;padding:9px!important;border-radius:13px;}
+  .desk{max-width:none!important;width:100%!important;min-height:82px!important;height:auto!important;}
+  .bottom-actions-container{display:grid!important;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0;}
+  .bottom-actions-container button{width:100%!important;min-width:0;}
+  .modal{align-items:flex-end!important;padding:0!important;}
+  .modal-content,.modal-content.large{width:100%!important;max-width:none!important;max-height:92vh!important;margin:0!important;border-radius:18px 18px 0 0!important;padding:14px!important;}
+  .modal-content h2,.modal-content h3{line-height:1.35;}
+  .pro-toolbar{display:grid!important;grid-template-columns:1fr!important;}
+  .pro-toolbar input,.pro-toolbar select{width:100%!important;}
+  .pro-table-wrap{margin-left:-4px;margin-right:-4px;width:calc(100% + 8px);}
+  table{font-size:12px!important;}
+  th,td{padding:8px 6px!important;}
+  .pro-dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+  .pro-stat .num{font-size:21px!important;}
+  #professionalQuickMenu{left:8px!important;bottom:8px!important;}
+  #professionalQuickMenu .pq-main{width:52px!important;height:52px!important;}
+}
+@media (min-width:481px) and (max-width:768px){
+  .classes-nav{overflow-x:auto;flex-wrap:nowrap;}
+  .class-tab{flex:0 0 auto;}
+  .classroom-layout{flex-wrap:wrap;}
+}
+</style>
+
 <style id="professional-modules-css">
 /* ===== Professional Modules: Student Profile / Dashboard / Attendance / Audit ===== */
 .pro-module { font-family: inherit; }
@@ -1079,6 +1120,175 @@ button:focus-visible, .btn:focus-visible, input[type="button"]:focus-visible, in
  .class-stat small{font-size:8.5px;}
 }
 </style>
+<style id="search-field-visibility-fix">
+/* تحسين وضوح حقول البحث - الكمبيوتر والتابلت والهاتف */
+.log-search-box {
+  position:relative !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  margin:12px 0 16px !important;
+  padding:9px !important;
+  background:#ffffff !important;
+  border:2px solid #b8c9d8 !important;
+  border-radius:14px !important;
+  box-shadow:0 4px 14px rgba(31,45,61,.09) !important;
+}
+.log-search-box::before {
+  content:'🔎';
+  flex:0 0 auto;
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  background:#eef6fc;
+  border-radius:10px;
+  font-size:19px;
+}
+.log-search-box input {
+  flex:1 1 auto !important;
+  width:100% !important;
+  min-width:0 !important;
+  min-height:48px !important;
+  padding:11px 13px !important;
+  border:2px solid #9fb4c5 !important;
+  border-radius:11px !important;
+  background:#fff !important;
+  color:#172b3a !important;
+  font-size:15px !important;
+  font-weight:600 !important;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.04) !important;
+}
+.log-search-box input::placeholder {
+  color:#607587 !important;
+  opacity:1 !important;
+  font-weight:600 !important;
+}
+.log-search-box input:focus {
+  border-color:#1976b5 !important;
+  box-shadow:0 0 0 4px rgba(25,118,181,.14), inset 0 1px 2px rgba(0,0,0,.04) !important;
+}
+.dev5-toolbar input[placeholder*="ابحث"] {
+  min-height:48px !important;
+  border:2px solid #9fb4c5 !important;
+  background:#fff !important;
+  color:#172b3a !important;
+  font-size:15px !important;
+  font-weight:600 !important;
+}
+@media (max-width:600px) {
+  .log-search-box {
+    padding:8px !important;
+    border-radius:13px !important;
+    gap:7px !important;
+  }
+  .log-search-box::before {
+    width:36px; height:36px; font-size:18px;
+  }
+  .log-search-box input {
+    min-height:50px !important;
+    font-size:16px !important;
+    padding:12px 11px !important;
+  }
+  .log-search-box input::placeholder {
+    font-size:13px !important;
+  }
+}
+@media (max-width:360px) {
+  .log-search-box::before { display:none; }
+  .log-search-box input { font-size:15px !important; }
+}
+</style>
+
+<style id="search-field-final-visibility-fix">
+/* تثبيت نهائي لوضوح حقول البحث في كل أجزاء النظام */
+.log-search-box {
+  display:flex !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  width:100% !important;
+  min-height:66px !important;
+  padding:8px !important;
+  box-sizing:border-box !important;
+  background:#e8f1f8 !important;
+  border:3px solid #34495e !important;
+  border-radius:12px !important;
+  box-shadow:0 3px 10px rgba(0,0,0,.15) !important;
+  position:relative !important;
+  z-index:5 !important;
+}
+.log-search-box::before {
+  content:'🔍' !important;
+  display:flex !important;
+  flex:0 0 42px !important;
+  width:42px !important;
+  height:46px !important;
+  align-items:center !important;
+  justify-content:center !important;
+  background:#34495e !important;
+  color:#fff !important;
+  border-radius:8px !important;
+  font-size:21px !important;
+}
+.log-search-box input {
+  display:block !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  flex:1 1 auto !important;
+  width:calc(100% - 50px) !important;
+  height:46px !important;
+  min-height:46px !important;
+  box-sizing:border-box !important;
+  padding:8px 14px !important;
+  background:#fff !important;
+  color:#111 !important;
+  border:3px solid #34495e !important;
+  border-radius:9px !important;
+  outline:none !important;
+  font-size:16px !important;
+  font-weight:700 !important;
+  line-height:1.4 !important;
+}
+.log-search-box input::placeholder {
+  color:#455a64 !important;
+  opacity:1 !important;
+  font-weight:700 !important;
+}
+.log-search-box input:focus {
+  border-color:#1976b5 !important;
+  box-shadow:0 0 0 3px rgba(25,118,181,.22) !important;
+}
+.pro-search, .dev5-toolbar { position:relative !important; z-index:5 !important; }
+.pro-search input, .dev5-toolbar input {
+  display:block !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  min-height:46px !important;
+  height:46px !important;
+  box-sizing:border-box !important;
+  background:#fff !important;
+  color:#111 !important;
+  border:3px solid #34495e !important;
+  border-radius:9px !important;
+  font-size:16px !important;
+  font-weight:700 !important;
+}
+.pro-search input::placeholder, .dev5-toolbar input::placeholder { color:#455a64 !important; opacity:1 !important; }
+#studentResetSearchInput, #dailyInventoryStudentSearch, #absenceReportStudentSearch, #systemGradesStudentSearch {
+  display:block !important; visibility:visible !important; opacity:1 !important;
+  min-height:46px !important; height:46px !important;
+  background:#fff !important; color:#111 !important;
+  border:3px solid #34495e !important; border-radius:9px !important;
+  font-size:16px !important; font-weight:700 !important; box-sizing:border-box !important;
+}
+#studentResetSearchInput::placeholder, #dailyInventoryStudentSearch::placeholder, #absenceReportStudentSearch::placeholder, #systemGradesStudentSearch::placeholder { color:#455a64 !important; opacity:1 !important; }
+@media (max-width:600px) {
+  .log-search-box { min-height:62px !important; padding:7px !important; }
+  .log-search-box::before { flex-basis:38px !important; width:38px !important; height:44px !important; font-size:19px !important; }
+  .log-search-box input { width:calc(100% - 46px) !important; height:44px !important; min-height:44px !important; font-size:16px !important; padding:7px 10px !important; }
+}
+</style>
+
 <style id="class-and-ui-polish">
 body { font-family: "Noto Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif; color:#243447; line-height:1.65; }
 button,input,select,textarea { font-family:inherit; }
@@ -1653,6 +1863,86 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
   .bottom-actions-container{grid-template-columns:1fr 1fr !important;padding:10px !important}
   #professionalQuickMenu{right:12px !important;bottom:12px !important}
   #professionalQuickMenu .pq-main{width:55px !important;height:55px !important;border-radius:18px !important}
+}
+</style>
+
+
+<style id="global-search-medium-fix">
+/* حقل البحث العام: حجم متوسط وثابت بدون أن ينكمش أو يتمدد بشكل مبالغ */
+#globalSearchWrapper {
+  display:flex !important;
+  align-items:center !important;
+  gap:8px !important;
+  flex:0 0 auto !important;
+  width:auto !important;
+  min-width:0 !important;
+}
+#globalStudentSearchInput {
+  flex:0 0 290px !important;
+  width:290px !important;
+  min-width:290px !important;
+  max-width:290px !important;
+  height:46px !important;
+  min-height:46px !important;
+  box-sizing:border-box !important;
+  padding:9px 14px !important;
+  border:2px solid #b7c7d6 !important;
+  border-radius:12px !important;
+  background:#fff !important;
+  color:#243447 !important;
+  font-size:16px !important;
+  font-weight:700 !important;
+  line-height:1.4 !important;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.05) !important;
+}
+#globalStudentSearchInput::placeholder {
+  color:#66798a !important;
+  opacity:1 !important;
+  font-size:15px !important;
+  font-weight:600 !important;
+}
+#globalStudentSearchInput:focus {
+  outline:none !important;
+  border-color:#2980b9 !important;
+  box-shadow:0 0 0 3px rgba(41,128,185,.14) !important;
+}
+#globalSearchWrapper > button {
+  flex:0 0 auto !important;
+  width:auto !important;
+  min-width:92px !important;
+  height:46px !important;
+  min-height:46px !important;
+  padding:9px 16px !important;
+  border-radius:12px !important;
+  font-size:15px !important;
+  font-weight:800 !important;
+  white-space:nowrap !important;
+}
+@media (max-width:900px) {
+  #globalStudentSearchInput {
+    flex-basis:240px !important; width:240px !important; min-width:240px !important; max-width:240px !important;
+  }
+}
+@media (max-width:650px) {
+  #globalSearchWrapper {
+    width:100% !important;
+    max-width:100% !important;
+  }
+  #globalStudentSearchInput {
+    flex:1 1 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    max-width:none !important;
+    height:46px !important;
+    min-height:46px !important;
+    font-size:15px !important;
+  }
+  #globalSearchWrapper > button {
+    flex:0 0 96px !important;
+    width:96px !important;
+    min-width:96px !important;
+    padding:8px 10px !important;
+  }
 }
 </style>
 
@@ -3045,14 +3335,95 @@ function acknowledgeAnnouncement(id) {
         return window.FirebaseCloud.save(payload);
     }
 
+    function persistOfflineCloudQueue(payload = null) {
+        try {
+            const snapshot = payload || getCloudPayload();
+            localStorage.setItem('schoolOfflinePendingCloud', JSON.stringify(snapshot));
+            localStorage.setItem('schoolOfflinePendingAt', new Date().toISOString());
+            localStorage.setItem('schoolOfflinePending', '1');
+        } catch (e) {
+            console.warn('Offline queue local save failed:', e);
+        }
+    }
+
+    function clearOfflineCloudQueue() {
+        try {
+            localStorage.removeItem('schoolOfflinePendingCloud');
+            localStorage.removeItem('schoolOfflinePendingAt');
+            localStorage.removeItem('schoolOfflinePending');
+        } catch (e) {}
+    }
+
+    async function flushOfflineCloudQueue() {
+        if (!window.FirebaseCloud?.enabled || !navigator.onLine) return false;
+        let queued = null;
+        try {
+            const raw = localStorage.getItem('schoolOfflinePendingCloud');
+            if (raw) queued = JSON.parse(raw);
+        } catch (e) { queued = null; }
+        if (!queued) return false;
+        try {
+            updateCloudStatus('جاري رفع بيانات وضع الأوف لاين إلى Firebase... ⬆️', '#9a6700');
+            queued.updatedAt = new Date().toISOString();
+            queued.resetGeneration = String(factoryResetGeneration || queued.resetGeneration || '0');
+            if (typeof window.FirebaseCloud.saveForGeneration === 'function') {
+                await window.FirebaseCloud.saveForGeneration(queued, factoryResetGeneration);
+            } else {
+                await window.FirebaseCloud.save(queued);
+            }
+            clearOfflineCloudQueue();
+            cloudSavePending = false;
+            cloudSaveExpectedRevision = String(queued.updatedAt || '');
+            firebaseOnline = true;
+            APP_SECURITY.lastGoodCloudUpdatedAt = String(queued.updatedAt || '');
+            APP_SECURITY.lastGoodCloudSnapshot = queued;
+            updateCloudStatus('تم رفع كل التعديلات المحفوظة أوف لاين إلى Firebase ✓', '#16803c');
+            return true;
+        } catch (e) {
+            firebaseOnline = false;
+            persistOfflineCloudQueue(queued);
+            updateCloudStatus('لا يزال الاتصال غير متاح — بياناتك محفوظة على الجهاز ✓', '#9a6700');
+            console.warn('Offline cloud flush failed:', e);
+            return false;
+        }
+    }
+
+    function setupOfflineSync() {
+        if (window.__schoolOfflineSyncReady) return;
+        window.__schoolOfflineSyncReady = true;
+        window.addEventListener('offline', () => {
+            firebaseOnline = false;
+            updateCloudStatus('لا يوجد إنترنت — وضع الأوف لاين فعال، سيتم الحفظ تلقائياً على الجهاز 📱', '#9a6700');
+        });
+        window.addEventListener('online', async () => {
+            firebaseOnline = true;
+            updateCloudStatus('عاد الإنترنت — جاري مزامنة البيانات... ☁️', '#9a6700');
+            clearTimeout(firebaseRetryTimer);
+            await flushOfflineCloudQueue();
+            initializeCloudData().catch(err => console.warn('Online Firebase refresh failed:', err));
+        });
+        setInterval(() => {
+            if (navigator.onLine && localStorage.getItem('schoolOfflinePending') === '1') flushOfflineCloudQueue();
+        }, 5000);
+    }
+
     function queueCloudSave(delay = 600) {
+        // localStorage هو طبقة الحفظ الأولى دائماً؛ Firebase مجرد مزامنة سحابية.
+        // لذلك حتى عند انقطاع الإنترنت لا نفقد أي تعديل.
         if (!window.FirebaseCloud || !window.FirebaseCloud.enabled) return;
         cloudSavePending = true;
         clearTimeout(cloudSaveTimer);
         clearTimeout(cloudSaveConfirmTimer);
+        const offlineSnapshot = getCloudPayload();
+        persistOfflineCloudQueue(offlineSnapshot);
+        if (!navigator.onLine) {
+            updateCloudStatus('لا يوجد إنترنت — تم حفظ التعديل محلياً وسيُرفع عند عودة الإنترنت ✓', '#9a6700');
+            return;
+        }
         cloudSaveTimer = setTimeout(async () => {
-            if (!cloudReady) {
-                // نبقي علامة التعديل حتى لا تسمح المزامنة القديمة بإرجاع البيانات المحذوفة.
+            if (!cloudReady || !navigator.onLine) {
+                persistOfflineCloudQueue(getCloudPayload());
+                updateCloudStatus('تم حفظ التعديل محلياً — بانتظار عودة الإنترنت ✓', '#9a6700');
                 return;
             }
             try {
@@ -3091,10 +3462,11 @@ function acknowledgeAnnouncement(id) {
                     }
                 }, 5000);
             } catch (e) {
-                cloudSavePending = false;
-                cloudSaveExpectedRevision = '';
+                // لا نحذف التعديل عند فشل الشبكة: يحتفظ به طابور الأوف لاين حتى تعود الشبكة.
+                firebaseOnline = false;
+                persistOfflineCloudQueue(getCloudPayload());
                 console.error('Cloud save failed:', e);
-                updateCloudStatus('تعذر الحفظ السحابي — البيانات المحلية محفوظة', '#b42318');
+                updateCloudStatus('تعذر الاتصال — التعديل محفوظ أوف لاين وسيُرفع تلقائياً ✓', '#9a6700');
             }
         }, delay);
     }
@@ -3105,6 +3477,7 @@ function acknowledgeAnnouncement(id) {
     }
 
     async function initializeCloudData() {
+        setupOfflineSync();
         // النظام يصبح جاهزاً فوراً من البيانات المحلية. Firebase لا يمنع الدخول إطلاقاً.
         ensureStableIds();
         cloudReady = true;
