@@ -2582,6 +2582,8 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
     let monitorMessagesData = [];
     try { monitorsData = JSON.parse(localStorage.getItem('monitorsData') || '[]') || []; monitorNotesData = JSON.parse(localStorage.getItem('monitorNotesData') || '[]') || []; monitorInventoryReportsData = JSON.parse(localStorage.getItem('monitorInventoryReportsData') || '[]') || []; monitorMessagesData = JSON.parse(localStorage.getItem('monitorMessagesData') || '[]') || []; } catch(e) { monitorsData=[]; monitorNotesData=[]; monitorInventoryReportsData=[]; monitorMessagesData=[]; }
     let cloudReady = false;
+    let firebaseOnline = false;
+    let firebaseRetryTimer = null;
     let cloudSaveTimer = null;
     // يمنع مزامنة Firebase القديمة من الكتابة فوق تعديل المدير مباشرة بعد الضغط على زر الحالة.
     let cloudSavePending = false;
@@ -2688,25 +2690,14 @@ function repairLegacySchoolData() {
   });
 }
 
-function normalizeLoginCode(code) {
-  // توحيد الأرقام العربية/الفارسية والرموز الخفية حتى يعمل الكود
-  // سواء كُتب من لوحة المفاتيح العربية أو الإنجليزية أو نُسخ من الهاتف.
-  return String(code ?? '')
-    .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
-    .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0))
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\s+/g, '')
-    .trim();
-}
-
 function findStudentBySecretCode(code) {
-  const normalized=normalizeLoginCode(code); if(!normalized) return null;
+  const normalized=String(code??'').trim(); if(!normalized) return null;
   for(let classIndex=0;classIndex<schoolData.length;classIndex++){
     const cls=schoolData[classIndex]; if(!Array.isArray(cls.desks))continue;
     for(let deskIndex=0;deskIndex<cls.desks.length;deskIndex++){
       const desk=cls.desks[deskIndex]; if(!desk)continue;
       for(const slot of [1,2]){
-        if(normalizeLoginCode(desk['code'+slot])===normalized && String(desk['student'+slot]||'').trim()){
+        if(String(desk['code'+slot]??'').trim()===normalized && String(desk['student'+slot]||'').trim()){
           return {student:{id:desk['student'+slot+'Id']||desk.id,name:desk['student'+slot],code:desk['code'+slot]||'',phone:desk['phone'+slot]||'',address:desk['address'+slot]||'',gender:desk['gender'+slot]||'',seat:desk.deskNumber,deskNumber:desk.deskNumber,slot},classObj:cls,classIndex,deskIndex};
         }
       }
@@ -2970,7 +2961,16 @@ function acknowledgeAnnouncement(id) {
     }
 
     async function initializeCloudData() {
-        const maxAttempts = 3;
+        // النظام يصبح جاهزاً فوراً من البيانات المحلية. Firebase لا يمنع الدخول إطلاقاً.
+        ensureStableIds();
+        cloudReady = true;
+        firebaseOnline = false;
+        const loginBtn = document.getElementById('loginButton');
+        if (loginBtn) loginBtn.disabled = false;
+        toggleLoginFields();
+        updateCloudStatus('النظام جاهز — جارٍ الاتصال بـ Firebase بالخلفية...', '#666');
+
+        const maxAttempts = 1;
         let lastError = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
@@ -2979,9 +2979,20 @@ function acknowledgeAnnouncement(id) {
                 throw new Error('Firebase SDK غير متاح في الصفحة.');
             }
             const cloud = await window.FirebaseCloud.load();
+            firebaseOnline = true;
             if (cloud && (cloud.schoolData !== undefined || cloud.teachersData !== undefined)) {
                 if (!validateCloudPayload(cloud)) {
                     throw new Error('Firebase returned an invalid schoolSystem payload.');
+                }
+                // إذا عدّل المستخدم بيانات محلياً أثناء انتظار Firebase، لا تستبدل
+                // تعديله بنسخة أقدم؛ ارفع النسخة المحلية إلى Firebase بدلاً من ذلك.
+                if (cloudSavePending) {
+                    await window.FirebaseCloud.save(getCloudPayload());
+                    cloudSavePending = false;
+                    updateCloudStatus('تمت مزامنة التعديلات المحلية مع Firebase ☁️', '#16803c');
+                    startRealtimeCloudSync();
+                    scheduleAutomaticBackup();
+                    return true;
                 }
                 APP_SECURITY.lastGoodCloudUpdatedAt = String(cloud.updatedAt || '');
                 APP_SECURITY.lastGoodCloudSnapshot = cloud;
@@ -3028,6 +3039,7 @@ function acknowledgeAnnouncement(id) {
             }
             ensureStableIds();
             cloudReady = true;
+            firebaseOnline = true;
             updateCloudStatus('متصل بـ Firebase ☁️', '#16803c');
             startRealtimeCloudSync();
             scheduleAutomaticBackup();
@@ -3043,14 +3055,18 @@ function acknowledgeAnnouncement(id) {
             }
           }
         }
-        // إذا تعذر الاتصال مؤقتاً، لا نمنع المستخدم من الدخول إلى النسخة المحلية.
-        // عند عودة Firebase، تبقى المزامنة متاحة عبر المحاولة التالية/إعادة تحميل الصفحة.
+        // فشل Firebase لا يعني فشل النظام. نتركه يعمل محلياً ونعيد المحاولة تلقائياً.
         cloudReady = true;
-        updateCloudStatus('تعذر الاتصال حالياً بـ Firebase — سيتم استخدام البيانات المحلية مؤقتاً', '#b42318');
+        firebaseOnline = false;
         const btn = document.getElementById('loginButton');
         if (btn) btn.disabled = false;
         toggleLoginFields();
-        console.error('Cloud initialization failed after retries:', lastError);
+        updateCloudStatus('النظام يعمل — جارٍ إعادة محاولة اتصال Firebase تلقائياً...', '#9a6700');
+        console.error('Cloud initialization failed:', lastError);
+        clearTimeout(firebaseRetryTimer);
+        firebaseRetryTimer = setTimeout(() => {
+            initializeCloudData().catch(err => console.error('Firebase retry failed:', err));
+        }, 10000);
         return false;
     }
 
@@ -3340,86 +3356,16 @@ function acknowledgeAnnouncement(id) {
         ['adminNewPasswordInput','adminConfirmPasswordInput'].forEach(id=>addSecretToggle(id));
     }
 
-    async function refreshLoginDataFromFirebase() {
-        if (!window.FirebaseCloud || !window.FirebaseCloud.enabled || typeof window.FirebaseCloud.load !== 'function') {
-            throw new Error('Firebase غير متاح في هذه الصفحة.');
-        }
-
-        const cloud = await window.FirebaseCloud.load();
-        if (!cloud || typeof cloud !== 'object') {
-            throw new Error('لم يتم العثور على بيانات schoolSystem في Firebase.');
-        }
-
-        /*
-         * مهم جداً لتسجيل الدخول على الاستضافة:
-         * لا نرفض تسجيل الدخول بسبب نقص حقل غير متعلق بكود الدخول.
-         * بعض النسخ القديمة من النظام خزنت schoolSystem ببنية مختلفة،
-         * بينما adminCode/teachersData/assistantsData قد تكون موجودة وصحيحة.
-         * لذلك نقرأ الحقول التي نحتاجها للدخول كل حقل بشكل مستقل.
-         */
-        if (cloud.adminCode !== undefined && String(cloud.adminCode).trim()) {
-            adminCredentials.password = String(cloud.adminCode).trim();
-        }
-        if (cloud.adminName !== undefined && String(cloud.adminName).trim()) {
-            adminCredentials.name = String(cloud.adminName).trim();
-        }
-
-        if (Array.isArray(cloud.assistantsData)) assistantsData = cloud.assistantsData;
-        if (Array.isArray(cloud.teachersData)) teachersData = cloud.teachersData;
-        if (Array.isArray(cloud.monitorsData)) monitorsData = cloud.monitorsData;
-        if (Array.isArray(cloud.guestSupervisorsData)) guestSupervisorsData = cloud.guestSupervisorsData;
-
-        // schoolData قديمًا كان يُحفظ أحياناً بصيغة مختلفة؛ نترك التطبيع للدالة الحالية.
-        if (cloud.schoolData !== undefined) {
-            try { schoolData = normalizeSchoolDataValue(cloud.schoolData); } catch (_) {}
-        }
-
-        // لا نسمح لبنية ناقصة في Firebase أن تمنع دخول المدير إذا كان adminCode موجوداً.
-        if (cloud.updatedAt) lastAppliedCloudUpdatedAt = String(cloud.updatedAt);
-        APP_SECURITY.lastGoodCloudUpdatedAt = String(cloud.updatedAt || '');
-        APP_SECURITY.lastGoodCloudSnapshot = cloud;
-        try { ensureStableIds(); } catch (_) {}
-        cloudReady = true;
-        updateCloudStatus('تم تحديث بيانات الدخول من Firebase ✓', '#16803c');
-        return cloud;
-    }
-
-    async function performLogin() {
-        const enteredCode = normalizeLoginCode(document.getElementById('loginCodeInput')?.value || '');
+    function performLogin() {
+        const enteredCode = String(document.getElementById('loginCodeInput')?.value || '').trim();
         if (!enteredCode) { alert('الرجاء إدخال كود الدخول.'); return; }
         if (loginIsLocked()) return;
-
-        // عند النشر على GitHub Pages لا نعتمد على localStorage القديم؛
-        // نقرأ أحدث نسخة من Firebase في كل محاولة دخول حتى يعمل الكود الصحيح
-        // حتى لو كان المستخدم قد غيّر الكود من جهاز آخر.
-        try {
-            await refreshLoginDataFromFirebase();
-        } catch (cloudError) {
-            console.error('Login Firebase refresh failed:', cloudError);
-            const firebaseCode = String(cloudError?.code || '').trim();
-            const firebaseMessage = String(cloudError?.message || '').trim();
-            let reason = 'تعذر الوصول إلى بيانات schoolSystem.';
-            if (/permission_denied|permission denied/i.test(firebaseCode + ' ' + firebaseMessage)) {
-                reason = 'تم رفض قراءة قاعدة Realtime Database بسبب قواعد Firebase (Permission Denied).';
-            } else if (/network|offline|disconnected|failed to fetch/i.test(firebaseCode + ' ' + firebaseMessage)) {
-                reason = 'يوجد خطأ في الاتصال بالإنترنت أو الاتصال بخدمة Firebase.';
-            } else if (/schoolSystem/i.test(firebaseMessage)) {
-                reason = firebaseMessage;
-            }
-            updateCloudStatus('فشل تحميل بيانات الدخول من Firebase', '#b42318');
-            alert('⚠️ تعذر تحميل بيانات الدخول من Firebase.\n\n' + reason + '\n\n' +
-                (firebaseCode ? 'رمز الخطأ: ' + firebaseCode + '\n' : '') +
-                (firebaseMessage && firebaseMessage !== firebaseCode ? 'تفاصيل: ' + firebaseMessage + '\n' : '') +
-                '\nلم يتم اعتبار الكود خاطئاً.');
-            return;
-        }
-
         // المدير: الكود الشخصي المحفوظ في Firebase.
-        if (enteredCode === normalizeLoginCode(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE)) {
+        if (enteredCode === String(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE).trim()) {
             currentUser = { role: 'admin', name: adminCredentials.name || 'مدير النظام', isPrimaryAdmin: true };
         } else {
             // المعاون: يمتلك نفس صلاحيات المدير داخل النظام.
-            const assistant = assistantsData.find(a => normalizeLoginCode(a.code || '') === enteredCode);
+            const assistant = assistantsData.find(a => String(a.code || '').trim() === enteredCode);
             if (assistant) {
                 currentUser = {
                     role: 'admin',
@@ -3432,16 +3378,16 @@ function acknowledgeAnnouncement(id) {
                 };
             } else {
                 // المعلم: البحث عن الكود المخصص له.
-                const teacherObj = teachersData.find(t => normalizeLoginCode(t.password || '') === enteredCode);
+                const teacherObj = teachersData.find(t => String(t.password || '').trim() === enteredCode);
                 if (teacherObj) {
                     beginTeacherSpecialtyLogin(teacherObj, enteredCode);
                     return;
                 } else {
-                    const monitor = monitorsData.find(m => normalizeLoginCode(m.code || '') === enteredCode);
+                    const monitor = monitorsData.find(m => String(m.code || '').trim() === enteredCode);
                     if (monitor) {
                         currentUser = { role:'monitor', name:monitor.name || 'المراقب', monitorId:monitor.id || '' };
                     } else {
-                        const guestSupervisor = guestSupervisorsData.find(g => normalizeLoginCode(g.code || '') === enteredCode && g.active !== false);
+                        const guestSupervisor = guestSupervisorsData.find(g => String(g.code || '').trim() === enteredCode && g.active !== false);
                         if (guestSupervisor) {
                             currentUser = { role:'guestSupervisor', name:guestSupervisor.name || 'مشرف ضيف', guestSupervisorId:guestSupervisor.id || '' };
                         } else {
@@ -8271,10 +8217,23 @@ const currentStatus = adminChangedStatus || professionalStatus || x.status || 'a
         localStorage.removeItem('currentUser');
         document.getElementById('loginOverlay').style.display = 'flex';
         const btn = document.getElementById('loginButton');
-        if (btn) btn.disabled = true;
-        await initializeCloudData();
+        // تسجيل الدخول لا ينتظر Firebase؛ الاتصال السحابي يعمل في الخلفية.
+        if (btn) btn.disabled = false;
+        initializeCloudData().catch(err => {
+            console.error('Background Firebase initialization failed:', err);
+            cloudReady = true;
+            if (btn) btn.disabled = false;
+            toggleLoginFields();
+        });
         toggleLoginFields();
     };
+
+    // عند عودة الإنترنت، نعيد محاولة Firebase تلقائياً بدون إعادة تحميل الصفحة.
+    window.addEventListener('online', function(){
+        clearTimeout(firebaseRetryTimer);
+        initializeCloudData().catch(err => console.error('Firebase online retry failed:', err));
+    });
+
 
 // حماية إضافية: تسجيل أخطاء الواجهة دون إيقاف البرنامج بالكامل.
 document.addEventListener('input', function(e){ if(e.target && e.target.id==='announcementMessageInput'){ const h=document.getElementById('announcementCountHint'); if(h) h.textContent=`${e.target.value.length} / 500`; }});
