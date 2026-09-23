@@ -3113,7 +3113,7 @@ function acknowledgeAnnouncement(id) {
         let lastError = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
-            updateCloudStatus(attempt === 1 ? 'جاري تحميل بيانات Firebase...' : `إعادة الاتصال بـ Firebase (${attempt}/${maxAttempts})...`, '#666');
+            updateCloudStatus(attempt === 1 ? 'جاري تحميل بيانات ...' : `إعادة الاتصال بـ  (${attempt}/${maxAttempts})...`, '#666');
             if (!window.FirebaseCloud || !window.FirebaseCloud.enabled || typeof window.FirebaseCloud.load !== 'function') {
                 throw new Error('Firebase SDK غير متاح في الصفحة.');
             }
@@ -3196,7 +3196,7 @@ function acknowledgeAnnouncement(id) {
             ensureStableIds();
             cloudReady = true;
             firebaseOnline = true;
-            updateCloudStatus('متصل بـ Firebase ☁️', '#16803c');
+            updateCloudStatus('متصل بـ  ☁️', '#16803c');
             startFactoryResetControlSync();
             startRealtimeCloudSync();
             scheduleAutomaticBackup();
