@@ -1292,16 +1292,25 @@ table td,table th { line-height:1.55; }
         return snap.exists() ? snap.val() : null;
       },
       async factoryReset() {
-        const current = await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
-        const oldGen = String(current.exists() ? (current.val() || '0') : '0');
+        const current = await firebaseDB.ref('systemControl/factoryReset').once('value');
+        const old = current.exists() ? (current.val() || {}) : {};
+        const oldGen = String(old.generation || '0');
         const nextGen = String((Number(oldGen) || 0) + 1) + '_' + Date.now();
-        // تحديث علامة الجيل وحذف البيانات والنسخ الاحتياطية في عملية واحدة.
+        const now = new Date().toISOString();
+        const logoutToken = nextGen + '_LOGOUT_' + Date.now();
         await firebaseDB.ref().update({
-          'systemControl/factoryReset': { generation: nextGen, resetAt: new Date().toISOString() },
+          'systemControl/factoryReset': { generation: nextGen, resetAt: now, logoutToken: logoutToken },
+          'systemControl/globalLogout': { token: logoutToken, reason: 'factory-reset', at: now },
           'schoolSystem': null,
           'schoolSystemBackups': null
         });
-        return nextGen;
+        return {generation: nextGen, logoutToken: logoutToken};
+      },
+      listenGlobalLogout(callback) {
+        const ref = firebaseDB.ref('systemControl/globalLogout');
+        const handler = snap => callback(snap.exists() ? snap.val() : null);
+        ref.on('value', handler);
+        return () => ref.off('value', handler);
       },
       async saveForGeneration(data, expectedGeneration) {
         const snap = await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
@@ -2679,6 +2688,8 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
     let factoryResetGeneration = '0';
     let factoryResetControlUnsubscribe = null;
     let factoryResetControlReady = false;
+    let globalLogoutUnsubscribe = null;
+    let globalLogoutToken = '';
     let factoryResetInProgress = false;
     let editingAssistantId = null;
 
@@ -3021,6 +3032,14 @@ function acknowledgeAnnouncement(id) {
         };
     }
 
+    async function saveCurrentCloudPayload() {
+        const payload = getCloudPayload();
+        if (typeof window.FirebaseCloud.saveForGeneration === 'function') {
+            return window.FirebaseCloud.saveForGeneration(payload, factoryResetGeneration);
+        }
+        return window.FirebaseCloud.save(payload);
+    }
+
     function queueCloudSave(delay = 600) {
         if (!window.FirebaseCloud || !window.FirebaseCloud.enabled) return;
         cloudSavePending = true;
@@ -3124,7 +3143,7 @@ function acknowledgeAnnouncement(id) {
                 // إذا عدّل المستخدم بيانات محلياً أثناء انتظار Firebase، لا تستبدل
                 // تعديله بنسخة أقدم؛ ارفع النسخة المحلية إلى Firebase بدلاً من ذلك.
                 if (cloudSavePending) {
-                    await window.FirebaseCloud.save(getCloudPayload());
+                    await saveCurrentCloudPayload();
                     cloudSavePending = false;
                     updateCloudStatus('تمت مزامنة التعديلات المحلية مع Firebase ☁️', '#16803c');
                     startRealtimeCloudSync();
@@ -3168,16 +3187,17 @@ function acknowledgeAnnouncement(id) {
                 localStorage.setItem('monitorsData', JSON.stringify(monitorsData));
                 localStorage.setItem('monitorNotesData', JSON.stringify(monitorNotesData));
                 if (announcementsPrunedOnLoad && window.FirebaseCloud && window.FirebaseCloud.enabled) {
-                    await window.FirebaseCloud.save(getCloudPayload());
+                    await saveCurrentCloudPayload();
                 }
             } else {
                 // أول تشغيل: ارفع البيانات الموجودة على هذا الجهاز إلى Firebase.
-                await window.FirebaseCloud.save(getCloudPayload());
+                await saveCurrentCloudPayload();
             }
             ensureStableIds();
             cloudReady = true;
             firebaseOnline = true;
             updateCloudStatus('متصل بـ Firebase ☁️', '#16803c');
+            startFactoryResetControlSync();
             startRealtimeCloudSync();
             scheduleAutomaticBackup();
             const btn = document.getElementById('loginButton');
@@ -3276,6 +3296,11 @@ function acknowledgeAnnouncement(id) {
         clearTimeout(cloudSaveConfirmTimer);
         if (automaticBackupTimer) { clearInterval(automaticBackupTimer); automaticBackupTimer = null; }
         try {
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('loggedInUser');
+            localStorage.removeItem('activeUser');
+            localStorage.removeItem('sessionUser');
+            currentUser=null;
             const keepKeys=new Set(['theme','appearance','accentColor']);
             const keys=[];
             for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k && !keepKeys.has(k))keys.push(k);}
@@ -3291,17 +3316,63 @@ function acknowledgeAnnouncement(id) {
         window.location.reload();
     }
 
+    function forceGlobalLogout(reason='global'){
+        if (factoryResetInProgress) return;
+        try {
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('loggedInUser');
+            localStorage.removeItem('activeUser');
+            localStorage.removeItem('sessionUser');
+            sessionStorage.clear();
+        } catch(_) {}
+        currentUser=null;
+        try { if(realtimeUnsubscribe){realtimeUnsubscribe();realtimeUnsubscribe=null;} }catch(_){}
+        cloudReady=false;
+        cloudSavePending=false;
+        cloudSaveExpectedRevision='';
+        clearTimeout(cloudSaveTimer);
+        clearTimeout(cloudSaveConfirmTimer);
+        if(automaticBackupTimer){clearInterval(automaticBackupTimer);automaticBackupTimer=null;}
+        const overlay=document.getElementById('loginOverlay');
+        const input=document.getElementById('loginCodeInput');
+        if(input) input.value='';
+        if(overlay) overlay.style.display='flex';
+        try{toggleLoginFields();}catch(_){}
+        alert(reason==='factory-reset' ? '🔒 تم تنفيذ ترسيت عام للنظام. تم تسجيل خروجك تلقائياً من هذا الجهاز. يجب تسجيل الدخول من جديد.' : '🔒 تم تسجيل خروجك من النظام بواسطة المدير. يجب تسجيل الدخول من جديد.');
+    }
+
     function startFactoryResetControlSync(){
-        if (!window.FirebaseCloud?.enabled || typeof window.FirebaseCloud.listenFactoryReset !== 'function') return;
-        if (factoryResetControlUnsubscribe) { try{factoryResetControlUnsubscribe();}catch(_){} }
-        factoryResetControlUnsubscribe = window.FirebaseCloud.listenFactoryReset(control=>{
-            if(!control || !control.generation) return;
-            const incoming=String(control.generation);
-            if(!factoryResetControlReady){ factoryResetGeneration=incoming; factoryResetControlReady=true; return; }
-            if(incoming!==String(factoryResetGeneration||'0') && !factoryResetInProgress){
-                stopStaleClientAfterFactoryReset(incoming);
-            }
-        });
+        if(!window.FirebaseCloud?.enabled) return;
+        if(factoryResetControlUnsubscribe){try{factoryResetControlUnsubscribe();}catch(_){} }
+        if(typeof window.FirebaseCloud.listenFactoryReset==='function'){
+            factoryResetControlUnsubscribe=window.FirebaseCloud.listenFactoryReset(control=>{
+                if(!control) return;
+                if(control.logoutToken){
+                    const incomingLogout=String(control.logoutToken);
+                    if(!globalLogoutToken) globalLogoutToken=incomingLogout;
+                    else if(incomingLogout!==String(globalLogoutToken||'')&&!factoryResetInProgress){
+                        globalLogoutToken=incomingLogout;
+                        forceGlobalLogout('factory-reset');
+                    }
+                }
+                if(!control.generation) return;
+                const incoming=String(control.generation);
+                if(!factoryResetControlReady){factoryResetGeneration=incoming;factoryResetControlReady=true;return;}
+                if(incoming!==String(factoryResetGeneration||'0')&&!factoryResetInProgress) stopStaleClientAfterFactoryReset(incoming);
+            });
+        }
+        if(typeof window.FirebaseCloud.listenGlobalLogout==='function'){
+            if(globalLogoutUnsubscribe){try{globalLogoutUnsubscribe();}catch(_){} }
+            globalLogoutUnsubscribe=window.FirebaseCloud.listenGlobalLogout(control=>{
+                if(!control?.token) return;
+                const incoming=String(control.token);
+                if(!globalLogoutToken){globalLogoutToken=incoming;return;}
+                if(incoming!==String(globalLogoutToken||'')&&!factoryResetInProgress){
+                    globalLogoutToken=incoming;
+                    forceGlobalLogout(String(control.reason||'global'));
+                }
+            });
+        }
     }
 
     function startRealtimeCloudSync() {
@@ -3311,6 +3382,12 @@ function acknowledgeAnnouncement(id) {
             if (!rawCloud) return;
             const cloud = normalizeCloudPayload(rawCloud);
             if (!cloud) return;
+            // لا تسمح نسخة من جيل قديم بإرجاع البيانات بعد الترسيت العام.
+            const incomingGeneration = String(cloud.resetGeneration || '0');
+            if (incomingGeneration !== String(factoryResetGeneration || '0')) {
+                console.warn('تم تجاهل snapshot من جيل Firebase قديم بعد الترسيت العام.');
+                return;
+            }
             const revision = String(cloud.updatedAt || '');
 
             // إذا كان لدينا تعديل محلي لم يُؤكَّد بعد، تجاهل أي نسخة من Firebase
@@ -4452,20 +4529,30 @@ function acknowledgeAnnouncement(id) {
         try{
             factoryResetInProgress=true;
             let newFactoryGeneration = String(factoryResetGeneration || '0');
+            let newLogoutToken = '';
             if(window.FirebaseCloud?.enabled){
                 if(typeof window.FirebaseCloud.factoryReset==='function') {
-                    newFactoryGeneration = String(await window.FirebaseCloud.factoryReset());
+                    const result=await window.FirebaseCloud.factoryReset();
+                    if(result && typeof result==='object'){
+                        newFactoryGeneration=String(result.generation||newFactoryGeneration);
+                        newLogoutToken=String(result.logoutToken||'');
+                    }else newFactoryGeneration=String(result||newFactoryGeneration);
                 } else {
                     if(typeof firebaseDB==='undefined' || !firebaseDB) throw new Error('اتصال Firebase غير متاح.');
-                    const currentSnap=await firebaseDB.ref('systemControl/factoryReset/generation').once('value');
-                    const oldGen=String(currentSnap.exists()?(currentSnap.val()||'0'):'0');
+                    const currentSnap=await firebaseDB.ref('systemControl/factoryReset').once('value');
+                    const old=currentSnap.exists()?(currentSnap.val()||{}):{};
+                    const oldGen=String(old.generation||'0');
                     newFactoryGeneration=String((Number(oldGen)||0)+1)+'_'+Date.now();
+                    newLogoutToken=newFactoryGeneration+'_LOGOUT_'+Date.now();
+                    const now=new Date().toISOString();
                     await firebaseDB.ref().update({
-                        'systemControl/factoryReset':{generation:newFactoryGeneration,resetAt:new Date().toISOString()},
+                        'systemControl/factoryReset':{generation:newFactoryGeneration,resetAt:now,logoutToken:newLogoutToken},
+                        'systemControl/globalLogout':{token:newLogoutToken,reason:'factory-reset',at:now},
                         'schoolSystem':null,'schoolSystemBackups':null
                     });
                 }
                 factoryResetGeneration=newFactoryGeneration;
+                if(newLogoutToken) globalLogoutToken=newLogoutToken;
             }
 
             if(typeof realtimeUnsubscribe==='function' && realtimeUnsubscribe){try{realtimeUnsubscribe();}catch(_){}}
@@ -8064,7 +8151,7 @@ function acknowledgeAnnouncement(id) {
 
             // 7) حفظ الحالة المنظفة مباشرة في Firebase الرئيسية حتى لا تعود الأسماء القديمة عند المزامنة.
             if(window.FirebaseCloud?.enabled && typeof window.FirebaseCloud.save==='function'){
-                await window.FirebaseCloud.save(getCloudPayload());
+                await saveCurrentCloudPayload();
             }
 
             document.getElementById('studentDailyResetModal')?.remove();
