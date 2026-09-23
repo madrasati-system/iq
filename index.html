@@ -3344,24 +3344,41 @@ function acknowledgeAnnouncement(id) {
         if (!window.FirebaseCloud || !window.FirebaseCloud.enabled || typeof window.FirebaseCloud.load !== 'function') {
             throw new Error('Firebase غير متاح في هذه الصفحة.');
         }
+
         const cloud = await window.FirebaseCloud.load();
         if (!cloud || typeof cloud !== 'object') {
             throw new Error('لم يتم العثور على بيانات schoolSystem في Firebase.');
         }
-        if (!validateCloudPayload(cloud)) {
-            throw new Error('بيانات schoolSystem في Firebase غير مكتملة أو غير صالحة.');
-        }
-        applyCloudPayloadToLocal(cloud, {silent:true});
+
+        /*
+         * مهم جداً لتسجيل الدخول على الاستضافة:
+         * لا نرفض تسجيل الدخول بسبب نقص حقل غير متعلق بكود الدخول.
+         * بعض النسخ القديمة من النظام خزنت schoolSystem ببنية مختلفة،
+         * بينما adminCode/teachersData/assistantsData قد تكون موجودة وصحيحة.
+         * لذلك نقرأ الحقول التي نحتاجها للدخول كل حقل بشكل مستقل.
+         */
         if (cloud.adminCode !== undefined && String(cloud.adminCode).trim()) {
             adminCredentials.password = String(cloud.adminCode).trim();
         }
         if (cloud.adminName !== undefined && String(cloud.adminName).trim()) {
             adminCredentials.name = String(cloud.adminName).trim();
         }
+
+        if (Array.isArray(cloud.assistantsData)) assistantsData = cloud.assistantsData;
+        if (Array.isArray(cloud.teachersData)) teachersData = cloud.teachersData;
+        if (Array.isArray(cloud.monitorsData)) monitorsData = cloud.monitorsData;
+        if (Array.isArray(cloud.guestSupervisorsData)) guestSupervisorsData = cloud.guestSupervisorsData;
+
+        // schoolData قديمًا كان يُحفظ أحياناً بصيغة مختلفة؛ نترك التطبيع للدالة الحالية.
+        if (cloud.schoolData !== undefined) {
+            try { schoolData = normalizeSchoolDataValue(cloud.schoolData); } catch (_) {}
+        }
+
+        // لا نسمح لبنية ناقصة في Firebase أن تمنع دخول المدير إذا كان adminCode موجوداً.
         if (cloud.updatedAt) lastAppliedCloudUpdatedAt = String(cloud.updatedAt);
         APP_SECURITY.lastGoodCloudUpdatedAt = String(cloud.updatedAt || '');
         APP_SECURITY.lastGoodCloudSnapshot = cloud;
-        ensureStableIds();
+        try { ensureStableIds(); } catch (_) {}
         cloudReady = true;
         updateCloudStatus('تم تحديث بيانات الدخول من Firebase ✓', '#16803c');
         return cloud;
