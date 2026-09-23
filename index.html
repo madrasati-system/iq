@@ -2688,14 +2688,25 @@ function repairLegacySchoolData() {
   });
 }
 
+function normalizeLoginCode(code) {
+  // توحيد الأرقام العربية/الفارسية والرموز الخفية حتى يعمل الكود
+  // سواء كُتب من لوحة المفاتيح العربية أو الإنجليزية أو نُسخ من الهاتف.
+  return String(code ?? '')
+    .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
 function findStudentBySecretCode(code) {
-  const normalized=String(code??'').trim(); if(!normalized) return null;
+  const normalized=normalizeLoginCode(code); if(!normalized) return null;
   for(let classIndex=0;classIndex<schoolData.length;classIndex++){
     const cls=schoolData[classIndex]; if(!Array.isArray(cls.desks))continue;
     for(let deskIndex=0;deskIndex<cls.desks.length;deskIndex++){
       const desk=cls.desks[deskIndex]; if(!desk)continue;
       for(const slot of [1,2]){
-        if(String(desk['code'+slot]??'').trim()===normalized && String(desk['student'+slot]||'').trim()){
+        if(normalizeLoginCode(desk['code'+slot])===normalized && String(desk['student'+slot]||'').trim()){
           return {student:{id:desk['student'+slot+'Id']||desk.id,name:desk['student'+slot],code:desk['code'+slot]||'',phone:desk['phone'+slot]||'',address:desk['address'+slot]||'',gender:desk['gender'+slot]||'',seat:desk.deskNumber,deskNumber:desk.deskNumber,slot},classObj:cls,classIndex,deskIndex};
         }
       }
@@ -3330,17 +3341,17 @@ function acknowledgeAnnouncement(id) {
     }
 
     function performLogin() {
-        const enteredCode = String(document.getElementById('loginCodeInput')?.value || '').trim();
+        const enteredCode = normalizeLoginCode(document.getElementById('loginCodeInput')?.value || '');
         if (!enteredCode) { alert('الرجاء إدخال كود الدخول.'); return; }
         if (loginIsLocked()) return;
         if (!cloudReady) { alert('انتظر اكتمال الاتصال بقاعدة Firebase ثم حاول مرة أخرى.'); return; }
 
         // المدير: الكود الشخصي المحفوظ في Firebase.
-        if (enteredCode === String(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE).trim()) {
+        if (enteredCode === normalizeLoginCode(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE)) {
             currentUser = { role: 'admin', name: adminCredentials.name || 'مدير النظام', isPrimaryAdmin: true };
         } else {
             // المعاون: يمتلك نفس صلاحيات المدير داخل النظام.
-            const assistant = assistantsData.find(a => String(a.code || '').trim() === enteredCode);
+            const assistant = assistantsData.find(a => normalizeLoginCode(a.code || '') === enteredCode);
             if (assistant) {
                 currentUser = {
                     role: 'admin',
@@ -3353,16 +3364,16 @@ function acknowledgeAnnouncement(id) {
                 };
             } else {
                 // المعلم: البحث عن الكود المخصص له.
-                const teacherObj = teachersData.find(t => String(t.password || '').trim() === enteredCode);
+                const teacherObj = teachersData.find(t => normalizeLoginCode(t.password || '') === enteredCode);
                 if (teacherObj) {
                     beginTeacherSpecialtyLogin(teacherObj, enteredCode);
                     return;
                 } else {
-                    const monitor = monitorsData.find(m => String(m.code || '').trim() === enteredCode);
+                    const monitor = monitorsData.find(m => normalizeLoginCode(m.code || '') === enteredCode);
                     if (monitor) {
                         currentUser = { role:'monitor', name:monitor.name || 'المراقب', monitorId:monitor.id || '' };
                     } else {
-                        const guestSupervisor = guestSupervisorsData.find(g => String(g.code || '').trim() === enteredCode && g.active !== false);
+                        const guestSupervisor = guestSupervisorsData.find(g => normalizeLoginCode(g.code || '') === enteredCode && g.active !== false);
                         if (guestSupervisor) {
                             currentUser = { role:'guestSupervisor', name:guestSupervisor.name || 'مشرف ضيف', guestSupervisorId:guestSupervisor.id || '' };
                         } else {
@@ -4197,39 +4208,85 @@ function acknowledgeAnnouncement(id) {
 
     function toggleSystemResetPasswords(show){[1,2,3].forEach(i=>{const e=document.getElementById('systemResetPass'+i);if(e)e.type=show?'text':'password';});}
 
-    function confirmSystemReset(type){
-        if(!isPrimaryAdminUser()){alert('ترسيت النظام متاح لمدير النظام فقط.');return;}
-        const expected=String(adminCredentials?.password||'').trim();
-        const vals=[1,2,3].map(i=>String(document.getElementById('systemResetPass'+i)?.value||'').trim());
-        if(!expected || vals.some(v=>!v) || vals.some(v=>v!==expected)){
-            alert('❌ فشل التحقق. يجب إدخال رمز المدير الصحيح 3 مرات. لم يتم حذف أي بيانات.');
-            return;
-        }
+    async function confirmSystemReset(type){
         const labels={classes:'حذف كل الصفوف',teachers:'مسح كل المعلمين',students:'مسح كل الطلاب'};
-        const label=labels[type]||'ترسيت النظام';
-        const now=new Date().toISOString();
-        if(type==='classes'){
-            schoolData=[]; currentClassIndex=0; currentDeskIndex=0;
-            addAudit('ترسيت النظام — حذف كل الصفوف',`تم تنفيذ العملية بواسطة المدير بتاريخ ${new Date(now).toLocaleString('ar-IQ')}`);
-        }else if(type==='teachers'){
-            teachersData=[];
-            addAudit('ترسيت النظام — مسح كل المعلمين',`تم تنفيذ العملية بواسطة المدير بتاريخ ${new Date(now).toLocaleString('ar-IQ')}`);
-        }else if(type==='students'){
-            let count=0;
-            (schoolData||[]).forEach(cls=>{
-                (cls.desks||[]).forEach(d=>{
-                    if(d.student1){d.student1='';d.code1='';d.phone1='';d.address1='';d.gender1='';count++;}
-                    if(d.student2){d.student2='';d.code2='';d.phone2='';d.address2='';d.gender2='';count++;}
+        try{
+            if(!isPrimaryAdminUser()){alert('ترسيت النظام متاح لمدير النظام فقط.');return;}
+            const label=labels[type];
+            if(!label){alert('نوع الترسيت غير معروف.');return;}
+
+            const expected=String(adminCredentials?.password||'').trim();
+            const vals=[1,2,3].map(i=>String(document.getElementById('systemResetPass'+i)?.value||'').trim());
+            if(!expected){alert('❌ لم يتم العثور على الرمز السري للمدير. لم يتم تنفيذ أي حذف.');return;}
+            if(vals.some(v=>!v) || vals.some(v=>v!==expected)){
+                alert('❌ الرمز السري غير صحيح في إحدى المحاولات. يجب إدخال رمز المدير الصحيح 3 مرات. لم يتم حذف أي بيانات.');
+                return;
+            }
+
+            if(!confirm(`⚠️ تأكيد أخير\n\nسيتم الآن تنفيذ: ${label}.\nهذه العملية لا يمكن التراجع عنها.\n\nاضغط «موافق» للتنفيذ أو «إلغاء» للتراجع.`)) return;
+
+            const now=new Date();
+            let changedCount=0;
+            if(type==='classes'){
+                changedCount=Array.isArray(schoolData)?schoolData.length:0;
+                schoolData=[];
+                currentClassIndex=null;
+                currentDeskIndex=0;
+            }else if(type==='teachers'){
+                changedCount=Array.isArray(teachersData)?teachersData.length:0;
+                teachersData=[];
+            }else if(type==='students'){
+                (schoolData||[]).forEach(cls=>{
+                    if(!Array.isArray(cls.desks)) cls.desks=[];
+                    cls.desks.forEach(d=>{
+                        if(d.student1){d.student1='';d.code1='';d.phone1='';d.address1='';d.gender1='';d.student1Id='';changedCount++;}
+                        if(d.student2){d.student2='';d.code2='';d.phone2='';d.address2='';d.gender2='';d.student2Id='';changedCount++;}
+                    });
+                    cls.absenceRecords={};
                 });
-                cls.absenceRecords={};
-            });
-            addAudit('ترسيت النظام — مسح كل الطلاب',`تم مسح ${count} طالب/طالبة بواسطة المدير بتاريخ ${new Date(now).toLocaleString('ar-IQ')}`);
-        }else{return;}
-        saveData();
-        document.getElementById('systemResetPasswordModal')?.remove();
-        document.getElementById('systemResetModal')?.style && (document.getElementById('systemResetModal').style.display='none');
-        try{renderClasses();}catch(e){} try{renderTeachersTable();}catch(e){} try{updateClassNavigation();}catch(e){}
-        alert(`✅ تم تنفيذ «${label}» بنجاح وحفظ التغيير في السحابة.`);
+            }else{
+                alert('❌ نوع الترسيت غير معروف.');
+                return;
+            }
+
+            // الحفظ المحلي المباشر أولاً حتى لا تفشل العملية بسبب أي وحدة جانبية.
+            localStorage.setItem('schoolData', JSON.stringify(schoolData));
+            localStorage.setItem('teachersData', JSON.stringify(teachersData));
+            try{ localStorage.setItem('subjectsData', JSON.stringify(subjectsData)); }catch(_){ }
+
+            // تسجيل العملية لا يمنع تنفيذ الترسيت إذا كان سجل التدقيق فيه مشكلة.
+            try{
+                addAudit(`ترسيت النظام — ${label}`,`تم تنفيذ العملية بواسطة ${actorName()} بتاريخ ${now.toLocaleString('ar-IQ')} — العدد: ${changedCount}`);
+            }catch(auditError){
+                console.error('System reset audit error:', auditError);
+            }
+
+            // حفظ بقية بيانات النظام وطلب المزامنة مع Firebase بدون إيقاف الترسيت عند خطأ جانبي.
+            try{ saveData(); }
+            catch(saveError){
+                console.error('System reset saveData error:', saveError);
+                try{ localStorage.setItem('schoolData', JSON.stringify(schoolData)); }catch(_){ }
+                try{ localStorage.setItem('teachersData', JSON.stringify(teachersData)); }catch(_){ }
+                try{ queueCloudSave(); }catch(cloudError){ console.error('System reset cloud queue error:', cloudError); }
+            }
+
+            const passwordModal=document.getElementById('systemResetPasswordModal');
+            if(passwordModal) passwordModal.remove();
+            const mainModal=document.getElementById('systemResetModal');
+            if(mainModal) mainModal.style.display='none';
+
+            // إعادة رسم الواجهات، وأي خطأ في واجهة فرعية لا يلغي الترسيت.
+            try{if(typeof renderClasses==='function')renderClasses();}catch(e){console.error('renderClasses after reset:',e);}
+            try{if(typeof renderTeachersTable==='function')renderTeachersTable();}catch(e){console.error('renderTeachersTable after reset:',e);}
+            try{if(typeof renderClassesNav==='function')renderClassesNav();}catch(e){console.error('renderClassesNav after reset:',e);}
+            try{if(typeof updateClassNavigation==='function')updateClassNavigation();}catch(e){console.error('updateClassNavigation after reset:',e);}
+            try{if(typeof renderAssistantsList==='function')renderAssistantsList();}catch(e){console.error('renderAssistantsList after reset:',e);}
+
+            alert(`✅ تم تنفيذ «${label}» بنجاح. تم حذف/مسح البيانات المحددة وحفظها محلياً، وتم طلب مزامنتها مع Firebase.`);
+        }catch(error){
+            console.error('System reset failed:',error);
+            alert(`❌ تعذر تنفيذ الترسيت بسبب خطأ برمجي: ${error?.message||error}\n\nلم يتم عرض هذا الخطأ للمستخدم سابقاً بشكل واضح.`);
+        }
     }
 
     function openAdminManagementModal() {
