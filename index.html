@@ -1173,13 +1173,14 @@ table td,table th { line-height:1.55; }
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
 <script>
   const firebaseConfig = {
-    apiKey: "AIzaSyC7oOGg7lrPwU7Qa1wSotDE7d7vYuE2b2g",
-    authDomain: "school-30423.firebaseapp.com",
-    databaseURL: "https://school-30423-default-rtdb.firebaseio.com",
-    projectId: "school-30423",
-    storageBucket: "school-30423.firebasestorage.app",
-    messagingSenderId: "832600096689",
-    appId: "1:832600096689:web:e60ae91e5fc792e3c98790"
+    apiKey: "AIzaSyAUrzKmFBtpQyd5fig8RugixGBEALm5b7k",
+    authDomain: "school-7d86c.firebaseapp.com",
+    databaseURL: "https://school-7d86c-default-rtdb.firebaseio.com",
+    projectId: "school-7d86c",
+    storageBucket: "school-7d86c.firebasestorage.app",
+    messagingSenderId: "204644660536",
+    appId: "1:204644660536:web:15b1e128ad99808f54fdcd",
+    measurementId: "G-XDEW6HTZC1"
   };
 
   let firebaseDB = null;
@@ -1194,14 +1195,56 @@ table td,table th { line-height:1.55; }
     lastGoodCloudSnapshot: null
   };
 
+  // يحول بيانات Firebase القديمة/المفهرسة بمفاتيح رقمية إلى مصفوفات.
+  // Realtime Database قد يعيد المصفوفة ككائن إذا كانت الفهارس غير متصلة.
+  function normalizeCloudArray(value) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') {
+      return Object.keys(value)
+        .sort((a, b) => {
+          const na = Number(a), nb = Number(b);
+          if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+          return String(a).localeCompare(String(b), 'ar');
+        })
+        .map(key => value[key])
+        .filter(item => item !== undefined && item !== null);
+    }
+    return [];
+  }
+
+  function normalizeCloudPayload(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const normalized = { ...payload };
+    // بعض النسخ القديمة تحفظ المدرسة داخل { classes: [...] }.
+    if (normalized.schoolData && !Array.isArray(normalized.schoolData) && Array.isArray(normalized.schoolData.classes)) {
+      normalized.schoolData = normalized.schoolData.classes;
+    }
+    const arrayFields = [
+      'schoolData', 'teachersData', 'announcementsData',
+      'complaintsData', 'homeworkData', 'subjectsData', 'assistantsData',
+      'managerNotesData', 'assistantActionNotificationsData', 'guestSupervisorsData',
+      'monitorsData', 'monitorNotesData', 'monitorInventoryReportsData',
+      'monitorMessagesData', 'attendanceData', 'auditLog'
+    ];
+    arrayFields.forEach(field => {
+      if (normalized[field] !== undefined && normalized[field] !== null) {
+        normalized[field] = normalizeCloudArray(normalized[field]);
+      }
+    });
+    if (normalized.adminCode !== undefined && normalized.adminCode !== null) {
+      normalized.adminCode = String(normalized.adminCode);
+    }
+    return normalized;
+  }
+
   function validateCloudPayload(payload) {
-    // التحقق متوافق مع النسخ القديمة: الحقول الجديدة اختيارية،
-    // لأن Firebase قد يحتوي على بيانات أنشأتها نسخة أقدم من البرنامج.
+    // التحقق متوافق مع النسخ القديمة، بعد تطبيع الكائنات التي يعيدها Firebase.
+    payload = normalizeCloudPayload(payload);
     if (!payload || typeof payload !== 'object') return false;
     if (!Array.isArray(payload.schoolData)) return false;
     if (!Array.isArray(payload.teachersData)) return false;
     if (payload.assistantsData !== undefined && !Array.isArray(payload.assistantsData)) return false;
-  if (payload.guestSupervisorsData !== undefined && !Array.isArray(payload.guestSupervisorsData)) return false;
+    if (payload.guestSupervisorsData !== undefined && !Array.isArray(payload.guestSupervisorsData)) return false;
     if (payload.monitorsData !== undefined && !Array.isArray(payload.monitorsData)) return false;
     if (payload.announcementsData !== undefined && !Array.isArray(payload.announcementsData)) return false;
     if (payload.subjectsData !== undefined && !Array.isArray(payload.subjectsData)) return false;
@@ -2978,10 +3021,12 @@ function acknowledgeAnnouncement(id) {
             if (!window.FirebaseCloud || !window.FirebaseCloud.enabled || typeof window.FirebaseCloud.load !== 'function') {
                 throw new Error('Firebase SDK غير متاح في الصفحة.');
             }
-            const cloud = await window.FirebaseCloud.load();
+            const rawCloud = await window.FirebaseCloud.load();
             firebaseOnline = true;
+            const cloud = normalizeCloudPayload(rawCloud);
             if (cloud && (cloud.schoolData !== undefined || cloud.teachersData !== undefined)) {
                 if (!validateCloudPayload(cloud)) {
+                    console.warn('Firebase payload structure was repaired/normalized but is still incomplete.', rawCloud);
                     throw new Error('Firebase returned an invalid schoolSystem payload.');
                 }
                 // إذا عدّل المستخدم بيانات محلياً أثناء انتظار Firebase، لا تستبدل
@@ -3134,7 +3179,9 @@ function acknowledgeAnnouncement(id) {
     function startRealtimeCloudSync() {
         if (!window.FirebaseCloud?.enabled || typeof window.FirebaseCloud.listen !== 'function') return;
         if (realtimeUnsubscribe) realtimeUnsubscribe();
-        realtimeUnsubscribe = window.FirebaseCloud.listen(async cloud => {
+        realtimeUnsubscribe = window.FirebaseCloud.listen(async rawCloud => {
+            if (!rawCloud) return;
+            const cloud = normalizeCloudPayload(rawCloud);
             if (!cloud) return;
             // إذا كان المدير قد عدّل حالة للتو، لا تسمح لنسخة Firebase الأقدم
             // بأن تعيد الحالة السابقة قبل اكتمال الحفظ السحابي المؤجل.
