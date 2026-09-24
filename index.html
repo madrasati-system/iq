@@ -2234,10 +2234,14 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
             <p style="font-size:11px;color:#718294;margin-top:0;">الكود الجديد سيصبح كود الدخول الخاص بالحساب الحالي.</p>
             <div class="pro-form-grid">
                 <div class="form-group pro-field"><label>المستخدم الحالي</label><input id="adminCurrentUserName" readonly></div>
+                <div class="form-group pro-field"><label>اسم المدير للطباعة على النتائج</label><input type="text" id="printManagerNameInput" placeholder="مثال: الأستاذ أحمد"></div>
+                <div class="form-group pro-field"><label>اسم المدرسة للطباعة على النتائج</label><input type="text" id="printSchoolNameInput" placeholder="مثال: مدرسة التسامي"></div>
                 <div class="form-group pro-field"><label>الكود الجديد</label><input type="password" id="adminNewPasswordInput" inputmode="numeric" autocomplete="new-password" placeholder="مثال: 5678"></div>
                 <div class="form-group pro-field"><label>تأكيد الكود الجديد</label><input type="password" id="adminConfirmPasswordInput" inputmode="numeric" autocomplete="new-password" placeholder="أعد كتابة الكود"></div>
             </div>
             <div class="pro-primary-action"><button onclick="changeCurrentAdminPassword()" style="background:var(--success)">💾 حفظ الكود الجديد</button></div>
+            <div class="pro-primary-action"><button onclick="savePrintPrintSettings()" style="background:var(--blue)">🖨️ حفظ اسم المدير واسم المدرسة للطباعة</button></div>
+            <div style="font-size:11px;color:#718294;text-align:center;margin-top:6px">يتم حفظ اسم المدير واسم المدرسة مرة واحدة، ويظهران تلقائياً عند طباعة أي نتيجة.</div>
         </div>
 
         <div class="pro-form-panel" id="assistantManagementPanel">
@@ -2374,7 +2378,7 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
             <div style="display:flex;align-items:center;gap:8px"><div class="pro-date-box"><label>التاريخ</label><input type="date" id="teachersAbsenceDateInput" onchange="renderTeachersAbsenceTable()"></div><button onclick="closeModal('teachersAbsenceModal')" class="pro-close">إغلاق ✕</button></div>
         </div>
         <p style="font-size:12px;color:#718294;margin:0 0 13px" id="teachersAbsenceSubText">عرض حالة الحضور والغياب للتاريخ المختار</p>
-        <div class="pro-toolbar"><div class="pro-search"><input type="text" id="teachersAbsenceSearchInput" oninput="filterTable('teachersAbsenceSearchInput','teachersAbsenceTableBody')" placeholder="ابحث عن اسم المعلم أو الاختصاص..."></div></div>
+        <div class="pro-toolbar"><div class="pro-search"><input type="text" id="teachersAbsenceSearchInput" oninput="filterTable('teachersAbsenceSearchInput','teachersAbsenceTableBody')" placeholder="ابحث عن اسم المعلم أو الاختصاص..."></div><button type="button" onclick="openTeacherMonthlyReportModal()" style="background:var(--teal);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:800;">📊 جرد شهري لمعلم</button></div>
         <div id="teachersAbsenceSummary" class="absence-summary"></div>
         <div id="teachersAbsenceTableBody" class="absence-cards"></div>
     </div>
@@ -2387,9 +2391,13 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
             <button onclick="closeModal('teacherMonthlyReportModal')" style="background: #7f8c8d; padding: 3px 8px; font-size: 11px;">إغلاق X</button>
         </div>
         
-        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 12px; background: #f8f9fa; padding: 8px; border-radius: 6px; border: 1px solid #ddd;">
-            <label style="font-size: 12px; font-weight: bold;">اختر الشهر:</label>
-            <input type="month" id="reportMonthInput" onchange="renderTeacherMonthlyReport()" style="padding: 5px; font-size: 12px; border: 1px solid #ccc; border-radius: 4px;">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;background:#f8f9fa;padding:8px;border-radius:6px;border:1px solid #ddd;flex-wrap:wrap;">
+            <div id="monthlyReportTeacherPicker" style="display:none;align-items:center;gap:6px;">
+                <label style="font-size:12px;font-weight:bold;">المعلم:</label>
+                <select id="reportTeacherSelect" onchange="renderTeacherMonthlyReport()" style="padding:5px;font-size:12px;border:1px solid #ccc;border-radius:4px;min-width:180px;"></select>
+            </div>
+            <label style="font-size:12px;font-weight:bold;">اختر الشهر:</label>
+            <input type="month" id="reportMonthInput" onchange="renderTeacherMonthlyReport()" style="padding:5px;font-size:12px;border:1px solid #ccc;border-radius:4px;">
         </div>
 
         <div id="monthlyReportSummaryCards" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;"></div>
@@ -2918,9 +2926,8 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
         <div class="form-group pro-field"><label>نوع النتيجة</label><select id="resultPrintDateType" onchange="toggleResultPrintDate()"><option value="daily">يومي</option><option value="midyear">نصف السنة</option><option value="final">آخر السنة</option><option value="all">كل النتائج</option></select></div>
         <div class="form-group pro-field" id="resultPrintDateWrap"><label>اليوم والتاريخ</label><input type="date" id="resultPrintDate"></div>
         <div class="form-group pro-field wide"><label>الدروس</label><select id="resultPrintLesson"><option value="all">كل الدروس</option></select></div>
-        <div class="form-group pro-field wide"><label>اسم المدرسة الذي سيظهر في أعلى النتيجة</label><input type="text" id="resultPrintSchoolName" placeholder="مثال: مدرسة الإخوة"></div>
-      </div>
-      <div style="font-size:11px;color:#777;margin-top:8px;">سيظهر اسم المدرسة بتصميم كبير ومزخرف في أعلى ورقة النتيجة.</div>
+        </div>
+      <div style="font-size:11px;color:#777;margin-top:8px;">اسم المدير واسم المدرسة يؤخذان تلقائياً من «إدارة المدير والمعاون» ولا حاجة لكتابتهما عند كل طباعة.</div>
       <div class="pro-primary-action"><button onclick="printStudentResult()" style="background:var(--success);font-size:14px;">🖨️ معاينة وطباعة النتيجة</button></div>
     </div>
   </div>
@@ -2931,6 +2938,8 @@ input,select,textarea{border-radius:11px !important;border-color:#d8e3eb !import
 <script>
     const DEFAULT_ADMIN_LOGIN_CODE = '1234';
     let adminCredentials = { name: 'مدير النظام', password: DEFAULT_ADMIN_LOGIN_CODE };
+    let printManagerName = String(localStorage.getItem('printManagerName') || '').trim();
+    let printSchoolName = String(localStorage.getItem('printSchoolName') || '').trim();
     let assistantsData = [];
     let managerNotesData = [];
     let assistantActionNotificationsData = [];
@@ -3285,6 +3294,8 @@ function acknowledgeAnnouncement(id) {
         localStorage.setItem('homeworkData', JSON.stringify(homeworkData));
         localStorage.setItem('subjectsData', JSON.stringify(subjectsData));
         localStorage.setItem('adminCredentials', JSON.stringify(adminCredentials));
+        localStorage.setItem('printManagerName', JSON.stringify(printManagerName));
+        localStorage.setItem('printSchoolName', JSON.stringify(printSchoolName));
         localStorage.setItem('assistantsData', JSON.stringify(assistantsData));
         pruneManagerNotesData();
         pruneAssistantActionNotificationsData();
@@ -3307,6 +3318,8 @@ function acknowledgeAnnouncement(id) {
             updatedAt: new Date().toISOString(),
             adminCode: String(adminCredentials.password || DEFAULT_ADMIN_LOGIN_CODE),
             adminName: String(adminCredentials.name || 'مدير النظام'),
+            printManagerName: String(printManagerName || ''),
+            printSchoolName: String(printSchoolName || ''),
             assistantsData,
             managerNotesData,
             assistantActionNotificationsData,
@@ -3542,6 +3555,8 @@ function acknowledgeAnnouncement(id) {
                 if (cloud.subjectsData !== undefined) subjectsData = Array.isArray(cloud.subjectsData) ? cloud.subjectsData : [];
                 if (cloud.adminCode !== undefined && String(cloud.adminCode).trim()) adminCredentials.password = String(cloud.adminCode).trim();
                 if (cloud.adminName !== undefined && String(cloud.adminName).trim()) adminCredentials.name = String(cloud.adminName).trim();
+                if (cloud.printManagerName !== undefined) printManagerName = String(cloud.printManagerName || '').trim();
+                if (cloud.printSchoolName !== undefined) printSchoolName = String(cloud.printSchoolName || '').trim();
                 if (cloud.assistantsData !== undefined) assistantsData = Array.isArray(cloud.assistantsData) ? cloud.assistantsData : [];
                 if (cloud.managerNotesData !== undefined) managerNotesData = Array.isArray(cloud.managerNotesData) ? cloud.managerNotesData : [];
                 if (cloud.assistantActionNotificationsData !== undefined) assistantActionNotificationsData = Array.isArray(cloud.assistantActionNotificationsData) ? cloud.assistantActionNotificationsData : [];
@@ -3560,6 +3575,8 @@ function acknowledgeAnnouncement(id) {
                 localStorage.setItem('homeworkData', JSON.stringify(homeworkData));
                 localStorage.setItem('subjectsData', JSON.stringify(subjectsData));
                 localStorage.setItem('adminCredentials', JSON.stringify(adminCredentials));
+                localStorage.setItem('printManagerName', JSON.stringify(printManagerName));
+                localStorage.setItem('printSchoolName', JSON.stringify(printSchoolName));
                 localStorage.setItem('assistantsData', JSON.stringify(assistantsData));
                 localStorage.setItem('guestSupervisorsData', JSON.stringify(guestSupervisorsData));
                 localStorage.setItem('monitorsData', JSON.stringify(monitorsData));
@@ -3768,7 +3785,7 @@ function acknowledgeAnnouncement(id) {
             }
             const revision = String(cloud.updatedAt || '');
 
-            // إذا كان لدينا تعديل محلي لم يُؤكَّد بعد، تجاهل أي نسخة من Firebase
+            // إذا كان لدينا تعديل محلي لم يُؤكَّد بعد، تجاهل أي نسخة من Firebase
             // لا تحمل نفس revision. هذا مهم جداً للحذف: يمنع النسخة القديمة من
             // إعادة العنصر المحذوف إلى الشاشة/localStorage.
             if (cloudSavePending) {
@@ -3799,7 +3816,7 @@ function acknowledgeAnnouncement(id) {
         return {
             format:'school-system-backup', version:3, exportedAt:new Date().toISOString(),
             resetGeneration:String(factoryResetGeneration || '0'),
-            schoolData, teachersData, teachersAbsenceData, announcementsData, homeworkData, subjectsData, adminCredentials, assistantsData, guestSupervisorsData, monitorsData, monitorNotesData, monitorInventoryReportsData, monitorMessagesData,
+            schoolData, teachersData, teachersAbsenceData, announcementsData, homeworkData, subjectsData, adminCredentials, printManagerName, printSchoolName, assistantsData, guestSupervisorsData, monitorsData, monitorNotesData, monitorInventoryReportsData, monitorMessagesData,
             attendanceData:(typeof window.__professionalAttendanceDataForCloud==='function'?window.__professionalAttendanceDataForCloud():[]),
             auditLog:(typeof window.__professionalAuditLogForCloud==='function'?window.__professionalAuditLogForCloud():[])
         };
@@ -4291,6 +4308,7 @@ function acknowledgeAnnouncement(id) {
     }
 
     function applyUserPermissions() {
+        const _auditNav=document.getElementById('btnAuditNav'); if(_auditNav) _auditNav.style.display=(typeof isAdminUser==='function' ? isAdminUser() : !!(currentUser&&currentUser.role==='admin'))?'inline-block':'none';
         let badge = document.getElementById('userRoleBadge');
         let btnAddClass = document.getElementById('btnAddClassNav');
         let btnTeachers = document.getElementById('btnTeachersNav');
@@ -5092,6 +5110,10 @@ function acknowledgeAnnouncement(id) {
         const nameEl = document.getElementById('adminCurrentUserName');
         const assistantPanel = document.getElementById('assistantManagementPanel');
         if (nameEl) nameEl.value = currentUser.name || (currentUser.isAssistant ? 'معاون المدير' : 'مدير النظام');
+        const printNameEl = document.getElementById('printManagerNameInput');
+        if (printNameEl) printNameEl.value = printManagerName || adminCredentials.name || '';
+        const printSchoolEl = document.getElementById('printSchoolNameInput');
+        if (printSchoolEl) printSchoolEl.value = printSchoolName || '';
         if (assistantPanel) assistantPanel.style.display = isPrimaryAdminUser() ? 'block' : 'none';
         document.getElementById('adminNewPasswordInput').value = '';
         document.getElementById('adminConfirmPasswordInput').value = '';
@@ -5099,6 +5121,21 @@ function acknowledgeAnnouncement(id) {
         renderGuestSupervisorsList();
         modal.style.display = 'flex';
     }
+
+    function savePrintPrintSettings(){
+        if(!isPrimaryAdminUser()){ alert('تعديل بيانات الطباعة متاح لمدير النظام الأساسي فقط.'); return; }
+        const manager=String(document.getElementById('printManagerNameInput')?.value||'').trim();
+        const school=String(document.getElementById('printSchoolNameInput')?.value||'').trim();
+        if(!manager || !school){ alert('يجب كتابة اسم المدير واسم المدرسة قبل الحفظ.'); return; }
+        printManagerName=manager;
+        printSchoolName=school;
+        localStorage.setItem('printManagerName', JSON.stringify(printManagerName));
+        localStorage.setItem('printSchoolName', JSON.stringify(printSchoolName));
+        saveData();
+        if(window.ProfessionalModules?.addAudit) window.ProfessionalModules.addAudit('تعديل بيانات الطباعة',`${printManagerName} — ${printSchoolName}`);
+        alert('تم حفظ اسم المدير واسم المدرسة ومزامنتهما مع Firebase.');
+    }
+    function savePrintManagerName(){ return savePrintPrintSettings(); }
 
     function changeCurrentAdminPassword() {
         if (!isPrimaryAdminUser()) { alert('تغيير الأكواد متاح لمدير النظام فقط.'); return; }
@@ -5431,72 +5468,52 @@ function acknowledgeAnnouncement(id) {
     }
 
     function openTeacherMonthlyReportModal() {
-        if (currentUser.role !== 'teacher') return;
-        let monthInput = document.getElementById('reportMonthInput');
+        if (!currentUser || !['teacher','admin'].includes(currentUser.role)) return;
+        const picker=document.getElementById('monthlyReportTeacherPicker');
+        const select=document.getElementById('reportTeacherSelect');
+        const title=document.getElementById('monthlyReportTitle');
+        const monthInput=document.getElementById('reportMonthInput');
         if (!monthInput.value) {
-            let now = new Date();
-            monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const now=new Date();
+            monthInput.value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        }
+        if(currentUser.role==='admin'){
+            picker.style.display='flex';
+            select.innerHTML=teachersData.map((t,i)=>`<option value="${i}">${escapeGlobalSearchHTML(String(t?.name||'معلم'))}</option>`).join('') || '<option value="">لا يوجد معلمون</option>';
+            title.textContent='📊 الجرد الشهري لحضور وغياب المعلم';
+        }else{
+            picker.style.display='none';
+            title.textContent='📊 الملخص الشهري للحضور والغياب والإجازات';
         }
         renderTeacherMonthlyReport();
-        document.getElementById('teacherMonthlyReportModal').style.display = 'flex';
+        document.getElementById('teacherMonthlyReportModal').style.display='flex';
     }
 
     function renderTeacherMonthlyReport() {
-        if (currentUser.role !== 'teacher') return;
-        let monthVal = document.getElementById('reportMonthInput').value;
-        if (!monthVal) return;
-
-        let teacherName = currentUser.name;
-        let presentCount = 0;
-        let absentCount = 0;
-        let leaveCount = 0;
-        let matchedRecords = [];
-
-        let datesKeys = Object.keys(teachersAbsenceData).sort();
-        datesKeys.forEach(dateStr => {
-            if (dateStr.startsWith(monthVal)) {
-                let status = teachersAbsenceData[dateStr][teacherName];
-                if (status) {
-                    matchedRecords.push({ date: dateStr, status: status });
-                    if (status === 'حاضر') presentCount++;
-                    else if (status === 'غائب') absentCount++;
-                    else if (status === 'مجاز') leaveCount++;
-                }
+        if (!currentUser || !['teacher','admin'].includes(currentUser.role)) return;
+        const monthVal=document.getElementById('reportMonthInput')?.value;
+        if(!monthVal)return;
+        let teacherName=currentUser.name;
+        if(currentUser.role==='admin'){
+            const idx=parseInt(document.getElementById('reportTeacherSelect')?.value||'-1',10);
+            teacherName=teachersData[idx]?.name||'';
+        }
+        let presentCount=0,absentCount=0,leaveCount=0,matchedRecords=[];
+        Object.keys(teachersAbsenceData||{}).sort().forEach(dateStr=>{
+            if(dateStr.startsWith(monthVal)){
+                const status=teachersAbsenceData[dateStr]?.[teacherName];
+                if(status){matchedRecords.push({date:dateStr,status});if(status==='حاضر')presentCount++;else if(status==='غائب')absentCount++;else if(status==='مجاز')leaveCount++;}
             }
         });
-
-        let cardsContainer = document.getElementById('monthlyReportSummaryCards');
-        cardsContainer.innerHTML = `
-            <div style="flex: 1; background: #e8f8f5; border: 1px solid #27ae60; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 11px; color: #27ae60; font-weight: bold;">أيام الحضور ✔️</div>
-                <div style="font-size: 18px; font-weight: bold; color: #27ae60; margin-top: 4px;">${presentCount}</div>
-            </div>
-            <div style="flex: 1; background: #fdedec; border: 1px solid #c0392b; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 11px; color: #c0392b; font-weight: bold;">أيام الغياب ❌</div>
-                <div style="font-size: 18px; font-weight: bold; color: #c0392b; margin-top: 4px;">${absentCount}</div>
-            </div>
-            <div style="flex: 1; background: #fef9e7; border: 1px solid #f39c12; padding: 10px; border-radius: 6px; text-align: center;">
-                <div style="font-size: 11px; color: #d35400; font-weight: bold;">أيام الإجازة 🏖️</div>
-                <div style="font-size: 18px; font-weight: bold; color: #d35400; margin-top: 4px;">${leaveCount}</div>
-            </div>
-        `;
-
-        let tbody = document.getElementById('teacherMonthlyDetailsBody');
-        tbody.innerHTML = '';
-        if (matchedRecords.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="2">لا توجد سجلات حضور مسجلة لهذا الشهر حتى الآن.</td></tr>`;
-            return;
-        }
-
-        matchedRecords.forEach(rec => {
-            let badgeColor = rec.status === 'حاضر' ? 'var(--success)' : (rec.status === 'غائب' ? 'var(--danger)' : 'var(--warning)');
-            tbody.innerHTML += `
-                <tr>
-                    <td><strong>${rec.date}</strong></td>
-                    <td><span style="color: ${badgeColor}; font-weight: bold;">${rec.status}</span></td>
-                </tr>
-            `;
-        });
+        const cardsContainer=document.getElementById('monthlyReportSummaryCards');
+        cardsContainer.innerHTML=`<div style="flex:1;background:#e8f8f5;border:1px solid #27ae60;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#27ae60;font-weight:bold;">أيام الحضور ✔️</div><div style="font-size:18px;font-weight:bold;color:#27ae60;margin-top:4px;">${presentCount}</div></div><div style="flex:1;background:#fdedec;border:1px solid #c0392b;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#c0392b;font-weight:bold;">أيام الغياب ❌</div><div style="font-size:18px;font-weight:bold;color:#c0392b;margin-top:4px;">${absentCount}</div></div><div style="flex:1;background:#fef9e7;border:1px solid #f39c12;padding:10px;border-radius:6px;text-align:center;"><div style="font-size:11px;color:#d35400;font-weight:bold;">أيام الإجازة 🏖️</div><div style="font-size:18px;font-weight:bold;color:#d35400;margin-top:4px;">${leaveCount}</div></div>`;
+        const tbody=document.getElementById('teacherMonthlyDetailsBody');
+        tbody.innerHTML='';
+        if(!teacherName){tbody.innerHTML='<tr><td colspan="2">اختر معلماً أولاً.</td></tr>';return;}
+        if(!matchedRecords.length){tbody.innerHTML='<tr><td colspan="2">لا توجد سجلات حضور مسجلة لهذا الشهر.</td></tr>';return;}
+        matchedRecords.forEach(rec=>{const badgeColor=rec.status==='حاضر'?'var(--success)':(rec.status==='غائب'?'var(--danger)':'var(--warning)');tbody.innerHTML+=`<tr><td><strong>${escapeGlobalSearchHTML(rec.date)}</strong></td><td><span style="color:${badgeColor};font-weight:800">${escapeGlobalSearchHTML(rec.status)}</span></td></tr>`;});
+        const heading=document.querySelector('#teacherMonthlyReportModal h4');
+        if(heading)heading.textContent=`تفاصيل الأيام المسجلة للمعلم: ${teacherName}`;
     }
 
     function openClassSupervisorModal() {
@@ -7359,8 +7376,7 @@ function acknowledgeAnnouncement(id) {
         const lessons=[...new Set(grades.map(g=>String(g.subject||'').trim()).filter(Boolean))];
         sel.innerHTML='<option value="all">كل الدروس</option>'+lessons.map(x=>`<option value="${escapeGlobalSearchHTML(x)}">${escapeGlobalSearchHTML(x)}</option>`).join('');
         document.getElementById('resultPrintDate').value=getFormattedDate();
-        document.getElementById('resultPrintSchoolName').value='';
-        toggleResultPrintDate();
+                toggleResultPrintDate();
         const m=document.getElementById('studentResultPrintModal');m.style.display='flex';m.style.zIndex='1000005';
     }
     function toggleResultPrintDate(){
@@ -7375,8 +7391,9 @@ function acknowledgeAnnouncement(id) {
         const type=document.getElementById('resultPrintDateType').value;
         const wantedDate=document.getElementById('resultPrintDate').value;
         const lesson=document.getElementById('resultPrintLesson').value;
-        const schoolName=String(document.getElementById('resultPrintSchoolName').value||'').trim();
-        if(!schoolName){alert('اكتب اسم المدرسة قبل الطباعة.');return;}
+        const schoolName=String(printSchoolName||'').trim();
+        const managerName=String(printManagerName||'').trim();
+        if(!managerName || !schoolName){alert('يجب كتابة اسم المدير واسم المدرسة في «إدارة المدير والمعاون» قبل الطباعة.');return;}
         if(type==='daily'&&!wantedDate){alert('حدد اليوم والتاريخ.');return;}
         let grades=ensureStudentGrades(cls).filter(g=>String(g.studentKey)===String(student.studentKey));
         if(type==='daily') grades=grades.filter(g=>String(g.period||'')===String(wantedDate));
@@ -7388,7 +7405,7 @@ function acknowledgeAnnouncement(id) {
         const resultLabel={daily:'النتيجة اليومية',midyear:'نتيجة نصف السنة',final:'نتيجة آخر السنة',all:'كشف النتائج'}[type]||'نتيجة الطالب';
         const periodText=type==='daily'?`اليوم والتاريخ: ${wantedDate}`:resultLabel;
         const w=window.open('','_blank','width=900,height=700'); if(!w){alert('يرجى السماح بالنوافذ المنبثقة للطباعة.');return;}
-        w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${escapeGlobalSearchHTML(resultLabel)} - ${escapeGlobalSearchHTML(student.name)}</title><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;width:210mm;min-height:297mm;font-family:Tahoma,Arial,sans-serif;color:#16283d;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-sheet{position:relative;width:210mm;min-height:297mm;box-sizing:border-box;overflow:hidden;background:#fff}.watermark{position:absolute;inset:0;width:210mm;height:297mm;min-width:210mm;min-height:297mm;max-width:none;max-height:none;object-fit:fill;opacity:.32;filter:saturate(1.55) contrast(1.08) brightness(1.02);z-index:0;pointer-events:none}.page-content{position:relative;z-index:1;box-sizing:border-box;min-height:297mm;padding:16mm 15mm 14mm}.school{font-size:31px;font-weight:900;text-align:center;margin:0 0 12px;padding:15px;border:4px double #155fa0;border-radius:16px;background:rgba(255,255,255,.88);color:#12395c;letter-spacing:1px;box-shadow:0 2px 8px rgba(21,95,160,.12)}.title{text-align:center;font-size:25px;font-weight:900;color:#0e4777;margin:8px}.period{text-align:center;color:#b57900;font-weight:900;margin-bottom:15px}.meta{display:grid;grid-template-columns:1fr 1fr;border:2px solid rgba(21,95,160,.42);padding:11px;border-radius:12px;margin-bottom:15px;background:rgba(255,255,255,.9)}table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:2px solid rgba(21,95,160,.45);border-radius:12px;background:rgba(255,255,255,.92)}th,td{border-left:1px solid rgba(21,95,160,.22);border-bottom:1px solid rgba(21,95,160,.22);padding:10px;text-align:center}th{font-weight:900;background:rgba(19,91,145,.93);color:#fff}td{background:rgba(255,255,255,.82)}tr:last-child td{border-bottom:0}th:last-child,td:last-child{border-left:0}.signature{display:flex;justify-content:space-between;margin-top:55px;font-weight:800;color:#183b59}.note{margin-top:20px;text-align:center;font-size:11px;color:#536b80}@media print{html,body{width:210mm;height:297mm}.print-sheet{width:210mm;height:297mm;min-height:297mm}.watermark{opacity:.32;filter:saturate(1.55) contrast(1.08) brightness(1.02)}}@media screen{body{background:#dfe7ef}.print-sheet{margin:0 auto;box-shadow:0 0 18px rgba(0,0,0,.18)}}</style></head><body><div class="print-sheet"><img class="watermark" src="https://raw.githubusercontent.com/madrasati-system/School/refs/heads/main/%D8%AE%D9%84%D9%81%D9%8A%D8%A9%20%D8%A7%D9%84%D8%B4%D9%87%D8%A7%D8%AF%D8%A9%20.png" alt=""><div class="page-content"><div class="school">✦ ${escapeGlobalSearchHTML(schoolName)} ✦</div><div class="title">${escapeGlobalSearchHTML(resultLabel)}</div><div class="period">${escapeGlobalSearchHTML(periodText)}</div><div class="meta"><span><b>الطالب:</b> ${escapeGlobalSearchHTML(student.name)}</span><span><b>الصف:</b> ${escapeGlobalSearchHTML(cls.name||'')}</span></div><table><thead><tr><th>الدرس</th><th>الدرجة</th><th>نوع النتيجة</th><th>التاريخ / الفترة</th><th>المعلم</th></tr></thead><tbody>${rows}</tbody></table><div class="signature"><span>توقيع الإدارة: ....................</span><span>ختم المدرسة: ....................</span></div><div class="note">كشف رسمي لنتيجة الطالب</div></div></div><script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script></body></html>`);w.document.close();closeModal('studentResultPrintModal');
+        w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${escapeGlobalSearchHTML(resultLabel)} - ${escapeGlobalSearchHTML(student.name)}</title><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;width:210mm;min-height:297mm;font-family:Tahoma,Arial,sans-serif;color:#16283d;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-sheet{position:relative;width:210mm;min-height:297mm;box-sizing:border-box;overflow:hidden;background:#fff}.watermark{position:absolute;inset:0;width:210mm;height:297mm;min-width:210mm;min-height:297mm;max-width:none;max-height:none;object-fit:fill;opacity:.32;filter:saturate(1.55) contrast(1.08) brightness(1.02);z-index:0;pointer-events:none}.page-content{position:relative;z-index:1;box-sizing:border-box;min-height:297mm;padding:16mm 15mm 14mm}.school{font-size:31px;font-weight:900;text-align:center;margin:0 0 12px;padding:15px;border:4px double #155fa0;border-radius:16px;background:rgba(255,255,255,.88);color:#12395c;letter-spacing:1px;box-shadow:0 2px 8px rgba(21,95,160,.12)}.title{text-align:center;font-size:25px;font-weight:900;color:#0e4777;margin:8px}.period{text-align:center;color:#b57900;font-weight:900;margin-bottom:15px}.meta{display:grid;grid-template-columns:1fr 1fr;border:2px solid rgba(21,95,160,.42);padding:11px;border-radius:12px;margin-bottom:15px;background:rgba(255,255,255,.9)}table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border:2px solid rgba(21,95,160,.45);border-radius:12px;background:rgba(255,255,255,.92)}th,td{border-left:1px solid rgba(21,95,160,.22);border-bottom:1px solid rgba(21,95,160,.22);padding:10px;text-align:center}th{font-weight:900;background:rgba(19,91,145,.93);color:#fff}td{background:rgba(255,255,255,.82)}tr:last-child td{border-bottom:0}th:last-child,td:last-child{border-left:0}.print-manager-bottom{text-align:center;margin-top:22px;font-size:14px;color:#183b59;font-weight:900}.print-footer{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:30px;align-items:end;padding:0 8px}.footer-side{min-height:35mm;box-sizing:border-box;text-align:center;color:#183b59;background:transparent;border:0;padding:4px}.footer-title{font-weight:900;font-size:14px;color:#0e4777;margin-bottom:10px}.footer-sign-line{height:23mm;border-bottom:2px dotted #52697c;margin:0 18px 5px}.footer-caption{font-size:11px;color:#607487}.stamp-area{height:27mm;margin:0 22px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#718294;border:0}.note{margin-top:12px;text-align:center;font-size:11px;color:#536b80}@media print{.print-footer{break-inside:avoid}}@media print{html,body{width:210mm;height:297mm}.print-sheet{width:210mm;height:297mm;min-height:297mm}.watermark{opacity:.32;filter:saturate(1.55) contrast(1.08) brightness(1.02)}}@media screen{body{background:#dfe7ef}.print-sheet{margin:0 auto;box-shadow:0 0 18px rgba(0,0,0,.18)}}</style></head><body><div class="print-sheet"><img class="watermark" src="https://raw.githubusercontent.com/madrasati-system/School/refs/heads/main/%D8%AE%D9%84%D9%81%D9%8A%D8%A9%20%D8%A7%D9%84%D8%B4%D9%87%D8%A7%D8%AF%D8%A9%20.png" alt=""><div class="page-content"><div class="school">✦ ${escapeGlobalSearchHTML(schoolName)} ✦</div><div class="title">${escapeGlobalSearchHTML(resultLabel)}</div><div class="period">${escapeGlobalSearchHTML(periodText)}</div><div class="meta"><span><b>الطالب:</b> ${escapeGlobalSearchHTML(student.name)}</span><span><b>الصف:</b> ${escapeGlobalSearchHTML(cls.name||'')}</span></div><table><thead><tr><th>الدرس</th><th>الدرجة</th><th>نوع النتيجة</th><th>التاريخ / الفترة</th><th>المعلم</th></tr></thead><tbody>${rows}</tbody></table><div class="print-manager-bottom"><b>اسم المدير:</b> ${escapeGlobalSearchHTML(managerName)}</div><div class="print-footer"><div class="footer-side stamp-side"><div class="footer-title">ختم المدير</div><div class="stamp-area"></div></div><div class="footer-side signature-side"><div class="footer-title">توقيع المدير</div><div class="footer-sign-line"></div><div class="footer-caption">التوقيع</div></div></div><div class="note">كشف رسمي لنتيجة الطالب</div></div></div><script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script></body></html>`);w.document.close();closeModal('studentResultPrintModal');
     }
 
     function renderStudentsTable() {
@@ -9099,6 +9116,7 @@ window.addEventListener('unhandledrejection', function (event) {
 
   if (!Array.isArray(attendanceData)) attendanceData = [];
   if (!Array.isArray(auditLog)) auditLog = [];
+  pruneAuditToCurrentMonth();
 
   function persistModules(){
     try{
@@ -9111,7 +9129,7 @@ window.addEventListener('unhandledrejection', function (event) {
   window.__professionalAttendanceDataForCloud = () => attendanceData;
   window.__professionalAuditLogForCloud = () => auditLog;
   window.__loadProfessionalAttendanceFromCloud = (data) => { attendanceData = Array.isArray(data) ? data : []; persistModulesLocalOnly(); };
-  window.__loadProfessionalAuditFromCloud = (data) => { auditLog = Array.isArray(data) ? data : []; persistModulesLocalOnly(); };
+  window.__loadProfessionalAuditFromCloud = (data) => { auditLog = Array.isArray(data) ? data : []; pruneAuditToCurrentMonth(); persistModulesLocalOnly(); };
   function persistModulesLocalOnly(){
     try{
       localStorage.setItem(STORAGE_KEYS.attendance, JSON.stringify(attendanceData));
@@ -9134,12 +9152,28 @@ window.addEventListener('unhandledrejection', function (event) {
   function nowText(){
     return new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'});
   }
+  function auditMonthKey(dateValue){
+    const d=new Date(dateValue||Date.now());
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+
+  function pruneAuditToCurrentMonth(){
+    const currentMonth=auditMonthKey(Date.now());
+    const before=auditLog.length;
+    auditLog=auditLog.filter(r=>auditMonthKey(r.timestamp||r.createdAt||Date.now())===currentMonth);
+    if(auditLog.length>1000) auditLog.length=1000;
+    if(before!==auditLog.length){
+      try{localStorage.setItem(STORAGE_KEYS.audit,JSON.stringify(auditLog));}catch(e){}
+    }
+    return before!==auditLog.length;
+  }
 
   function actorName(){
     return (currentUser && currentUser.name) || 'مستخدم النظام';
   }
 
   function addAudit(action, details){
+    pruneAuditToCurrentMonth();
     if(currentUser?.isAssistant){
       pruneAssistantActionNotificationsData();
       assistantActionNotificationsData.unshift({id:createStableId('assistantAction'),assistantId:currentUser.assistantId||'',assistantName:currentUser.name||'المعاون',action:String(action||''),details:String(details||''),createdAt:new Date().toISOString(),createdAtMs:Date.now(),viewedAt:''});
@@ -9364,6 +9398,7 @@ window.addEventListener('unhandledrejection', function (event) {
     const absent=todayRecords.filter(x=>x.status==='absent').length;
     const late=todayRecords.filter(x=>x.status==='late').length;
     const teacherCount=teachersData.length;
+    const uniqueSubjectCount=new Set((subjectsData||[]).map(x=>String(x?.name||'').trim()).filter(Boolean)).size;
     const recent=attendanceData.slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,8);
 
     const recentRows=recent.map(r=>{
@@ -9378,13 +9413,13 @@ window.addEventListener('unhandledrejection', function (event) {
         <div class="pro-stat"><div class="lbl">المعلمون</div><div class="num">${teacherCount}</div></div>
         <div class="pro-stat"><div class="lbl">غياب اليوم</div><div class="num">${absent}</div></div>
         <div class="pro-stat"><div class="lbl">تأخير اليوم</div><div class="num">${late}</div></div>
-        <div class="pro-stat"><div class="lbl">سجلات الحضور</div><div class="num">${attendanceData.length}</div></div><div class="pro-stat"><div class="lbl">المواد</div><div class="num">${subjectsData.length}</div></div><div class="pro-stat"><div class="lbl">الإعلانات</div><div class="num">${announcementsData.length}</div></div>
+        <div class="pro-stat"><div class="lbl">سجلات الحضور</div><div class="num">${attendanceData.length}</div></div><div class="pro-stat"><div class="lbl">المواد المتاحة في المدرسة</div><div class="num">${uniqueSubjectCount}</div></div><div class="pro-stat"><div class="lbl">الإعلانات</div><div class="num">${announcementsData.length}</div></div>
       </div>
       <div class="pro-panel">
         <h3>📅 ملخص اليوم — ${escapeHTML(today)}</h3>
         <div class="pro-toolbar">
           <button type="button" onclick="ProfessionalModules.openAttendanceCenter()">📋 إدارة الحضور</button>
-                <button type="button" onclick="ProfessionalModules.exportBackup()">💾 نسخ احتياطي</button>
+<button type="button" onclick="ProfessionalModules.exportBackup()">💾 نسخ احتياطي</button>
               </div>
       </div>
       <div class="pro-panel">
@@ -9426,15 +9461,37 @@ window.addEventListener('unhandledrejection', function (event) {
   }
 
   function openAudit(){
-    const rows=auditLog.slice(0,200).map(r=>`<tr><td>${escapeHTML(r.displayTime||r.timestamp)}</td><td>${escapeHTML(r.actor)}</td><td>${escapeHTML(r.action)}</td><td>${escapeHTML(r.details)}</td></tr>`).join('');
+    if(!currentUser || !(['admin','assistant'].includes(String(currentUser.role||'').toLowerCase()) || currentUser.isPrimaryAdmin || currentUser.isAssistant || (typeof isAdminUser==='function' && isAdminUser()))) { alert('سجل العمليات متاح للمدير والمعاون فقط.'); return; }
+    const auditWasPruned=pruneAuditToCurrentMonth();
+    if(auditWasPruned && typeof queueCloudSave==='function') queueCloudSave(0);
+    const currentMonth=auditMonthKey(Date.now());
+    const rows=auditLog.slice(0,300).map(r=>`<tr><td>${escapeHTML(r.displayTime||r.timestamp)}</td><td>${escapeHTML(r.actor)}</td><td>${escapeHTML(r.action)}</td><td>${escapeHTML(r.details)}</td></tr>`).join('');
     const old=document.getElementById('professionalAuditModal');if(old)old.remove();
     const modal=document.createElement('div');modal.id='professionalAuditModal';modal.className='modal';
-    modal.style.cssText='display:flex;position:fixed;inset:0;z-index:100003;background:rgba(0,0,0,.55);padding:12px;align-items:center;justify-content:center;';
-    modal.innerHTML=`<div class="modal-content" style="width:min(1050px,98vw);max-height:94vh;overflow:auto;padding:18px">
-      <div class="pro-toolbar" style="justify-content:space-between"><h2 style="margin:0">🧾 سجل العمليات</h2><button type="button" onclick="document.getElementById('professionalAuditModal')?.remove()">✕</button></div>
-      <div class="pro-table-wrap"><table class="pro-table"><thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>التفاصيل</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="pro-empty">لا توجد عمليات مسجلة.</td></tr>'}</tbody></table></div>
+    modal.style.cssText='display:flex!important;position:fixed;inset:0;z-index:2147483647!important;background:rgba(0,0,0,.62);padding:12px;align-items:center;justify-content:center;pointer-events:auto!important;';
+    modal.innerHTML=`<div class="modal-content" style="width:min(1100px,98vw);max-height:94vh;overflow:auto;padding:18px">
+      <div class="pro-toolbar" style="justify-content:space-between"><div><h2 style="margin:0">🧾 سجل العمليات</h2><div style="font-size:11px;color:#718294;margin-top:5px">الفترة المحفوظة: الشهر الحالي فقط (${currentMonth})</div></div><button type="button" onclick="document.getElementById('professionalAuditModal')?.remove()">✕</button></div>
+      <div style="background:#fff8e8;border:1px solid #f0c36d;color:#76520a;border-radius:12px;padding:11px 13px;margin:10px 0;font-size:12px;line-height:1.8">⚠️ <strong>تنبيه التخزين:</strong> سجل العمليات مخصص للتتبع الإداري ويحتفظ بسجلات <strong>شهر واحد فقط</strong>. عند بداية شهر جديد تُزال سجلات الشهر السابق تلقائياً، ولا يتم حذف الطلاب أو المعلمين أو الحضور أو الدرجات.</div>
+      <div class="pro-toolbar" style="justify-content:flex-end"><button type="button" onclick="ProfessionalModules.resetAuditLog()" style="background:#c0392b;color:#fff;border:0;border-radius:10px;padding:9px 13px;font-weight:800">🗑️ ترسيت سجل العمليات</button></div>
+      <div class="pro-table-wrap"><table class="pro-table"><thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>التفاصيل</th></tr></thead><tbody>${rows||'<tr><td colspan="4" class="pro-empty">لا توجد عمليات مسجلة لهذا الشهر.</td></tr>'}</tbody></table></div>
     </div>`;
     document.body.appendChild(modal);
+    modal.style.setProperty('z-index','2147483647','important');
+    modal.style.setProperty('display','flex','important');
+    modal.style.setProperty('pointer-events','auto','important');
+    modal.querySelector('.modal-content')?.style.setProperty('position','relative','important');
+    modal.querySelector('.modal-content')?.style.setProperty('z-index','2147483647','important');
+  }
+
+  function resetAuditLog(){
+    if(!currentUser || (typeof isAdminUser==='function' ? !isAdminUser() : currentUser.role!=='admin')) { alert('هذه العملية متاحة للمدير والمعاون فقط.'); return; }
+    if(!confirm('هل أنت متأكد؟ سيتم حذف سجل العمليات الحالي فقط، ولن تتأثر بيانات الطلاب أو المعلمين أو الحضور أو الدرجات.')) return;
+    auditLog=[];
+    persistModules();
+    document.getElementById('professionalAuditModal')?.remove();
+    alert('تم ترسيت سجل العمليات فقط.');
+    addAudit('ترسيت سجل العمليات','ترسيت يدوي بواسطة المدير');
+    openAudit();
   }
 
   function exportBackup(){
@@ -9486,6 +9543,8 @@ window.addEventListener('unhandledrejection', function (event) {
       subjectsData=Array.isArray(p.subjectsData)?p.subjectsData:[];
       assistantsData=Array.isArray(p.assistantsData)?p.assistantsData:[];managerNotesData=Array.isArray(p.managerNotesData)?p.managerNotesData:[];assistantActionNotificationsData=Array.isArray(p.assistantActionNotificationsData)?p.assistantActionNotificationsData:[];guestSupervisorsData=Array.isArray(p.guestSupervisorsData)?p.guestSupervisorsData:[];monitorsData=Array.isArray(p.monitorsData)?p.monitorsData:[];monitorNotesData=Array.isArray(p.monitorNotesData)?p.monitorNotesData:[];
       if(p.adminCredentials?.password) adminCredentials={name:p.adminCredentials.name||'مدير النظام',password:String(p.adminCredentials.password).trim()};
+      if(p.printManagerName!==undefined) printManagerName=String(p.printManagerName||'').trim();
+      if(p.printSchoolName!==undefined) printSchoolName=String(p.printSchoolName||'').trim();
       attendanceData=Array.isArray(p.attendanceData)?p.attendanceData:[];
       auditLog=Array.isArray(p.auditLog)?p.auditLog:[];
       ensureStableIds();
@@ -9513,9 +9572,48 @@ window.addEventListener('unhandledrejection', function (event) {
   }
 
   // Public API
-  window.ProfessionalModules={
+    window.openAudit=function(){
+      try {
+        openAudit();
+        if(document.getElementById('professionalAuditModal')) return true;
+        if(typeof window.openProfessionalAudit==='function') return window.openProfessionalAudit();
+      } catch(e){
+        console.error('تعذر فتح سجل العمليات:',e);
+        if(typeof window.openProfessionalAudit==='function') return window.openProfessionalAudit();
+        alert('تعذر فتح سجل العمليات: '+(e?.message||e));
+      }
+      return false;
+    };
+
+  window.openProfessionalAudit=function(){
+    try{
+      if(typeof window.openAudit === 'function'){
+        window.openAudit();
+        if(document.getElementById('professionalAuditModal')) return;
+      }
+      if(window.ProfessionalModules?.openAudit){
+        window.ProfessionalModules.openAudit();
+        if(document.getElementById('professionalAuditModal')) return;
+      }
+    }catch(e){ console.error('فتح سجل العمليات:',e); }
+    // Fallback مستقل حتى لا يتعطل الزر إذا تعطلت إحدى وحدات النظام.
+    try{
+      const isAdmin=!!(window.currentUser?.role==='admin' || window.currentUser?.isPrimaryAdmin || window.currentUser?.isAssistant);
+      if(!isAdmin){ alert('سجل العمليات متاح للمدير والمعاون فقط.'); return; }
+      const data=Array.isArray(window.ProfessionalModules?.auditLog)?window.ProfessionalModules.auditLog:[];
+      document.getElementById('professionalAuditModal')?.remove();
+      const modal=document.createElement('div');
+      modal.id='professionalAuditModal';
+      modal.style.cssText='display:flex !important;position:fixed !important;inset:0 !important;z-index:2147483647 !important;background:rgba(0,0,0,.60) !important;padding:12px !important;align-items:center !important;justify-content:center !important;pointer-events:auto !important;';
+      const rows=data.slice(0,300).map(r=>`<tr><td>${String(r.displayTime||r.timestamp||'—')}</td><td>${String(r.actor||'—')}</td><td>${String(r.action||'—')}</td><td>${String(r.details||'—')}</td></tr>`).join('') || '<tr><td colspan="4" style="padding:20px;text-align:center">لا توجد عمليات مسجلة.</td></tr>';
+      modal.innerHTML=`<div style="background:#fff;width:min(1100px,98vw);max-height:94vh;overflow:auto;border-radius:16px;padding:18px;position:relative;z-index:2147483647;direction:rtl"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="margin:0">🧾 سجل العمليات</h2><button type="button" style="font-size:20px;padding:8px 14px" onclick="document.getElementById('professionalAuditModal')?.remove()">✕</button></div><div style="margin:12px 0;padding:10px;background:#fff8e8;border:1px solid #f0c36d;border-radius:10px">يتم الاحتفاظ بسجل العمليات للشهر الحالي فقط.</div><div style="overflow:auto"><table style="width:100%;border-collapse:collapse;text-align:center"><thead><tr><th style="padding:8px;border:1px solid #ddd">الوقت</th><th style="padding:8px;border:1px solid #ddd">المستخدم</th><th style="padding:8px;border:1px solid #ddd">العملية</th><th style="padding:8px;border:1px solid #ddd">التفاصيل</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      document.body.appendChild(modal);
+    }catch(e){ console.error(e); alert('تعذر فتح سجل العمليات: '+(e?.message||e)); }
+  };
+
+window.ProfessionalModules={
     openStudentProfile,openAttendance,saveAttendance,openAttendanceReport,deleteAttendance,recordAttendance,
-    openDashboard,openAttendanceCenter,openAudit,exportBackup,openRestore,restoreBackup,
+    openDashboard,openAttendanceCenter,openAudit,resetAuditLog,exportBackup,openRestore,restoreBackup,
     addAudit,
     get attendanceData(){return attendanceData;},
     get auditLog(){return auditLog;}
