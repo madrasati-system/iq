@@ -4107,7 +4107,7 @@ function acknowledgeAnnouncement(id) {
                     const match = findStudentBySecretCode(enteredCode);
                     if (!match) {
                         recordFailedLoginAttempt();
-                        alert('الكود غير صحيح أو غير مسجل في Firebase.');
+                        alert('الكود غير صحيح يرجى مراجعة ادارة المدرسة ');
                         return;
                     }
                     currentUser = {
